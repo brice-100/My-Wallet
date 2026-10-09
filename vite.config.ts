@@ -10,7 +10,15 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: [
+        'favicon.svg',
+        'favicon-32x32.png',
+        'apple-touch-icon.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'pwa-maskable-512x512.png',
+        'icons.svg',
+      ],
       manifest: {
         name: 'MY-Wallet - Gestion Financière Personnelle & Tontines',
         short_name: 'MY-Wallet',
@@ -22,16 +30,28 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/favicon.svg',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
           {
             src: '/favicon.svg',
-            sizes: '512x512',
+            sizes: 'any',
             type: 'image/svg+xml',
-            purpose: 'any maskable',
+            purpose: 'any',
           },
         ],
       },
