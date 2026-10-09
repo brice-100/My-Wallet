@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { transactionsApi } from '../../data/transactions'
+import { offlineStorage } from '../../lib/offlineStorage'
+import { useNetwork } from '../../context/NetworkContext'
 import type { Category, TransactionType, WalletBalanceView } from '../../types/database'
 import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, X, Loader2 } from 'lucide-react'
 
@@ -20,6 +22,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   categories,
 }) => {
   const { t } = useTranslation()
+  const { isOnline } = useNetwork()
   const [mode, setMode] = useState<'expense' | 'income' | 'transfer'>('expense')
   const [walletId, setWalletId] = useState(wallets[0]?.wallet_id || '')
   const [targetWalletId, setTargetWalletId] = useState(wallets[1]?.wallet_id || wallets[0]?.wallet_id || '')
@@ -59,30 +62,61 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
 
     try {
-      if (mode === 'transfer') {
-        if (!walletId || !targetWalletId) {
-          throw new Error(t('modals.tx.selectWallets', { defaultValue: 'Veuillez sélectionner les portefeuilles source et cible.' }))
-        }
-        if (walletId === targetWalletId) {
-          throw new Error(t('modals.tx.distinctWallets', { defaultValue: 'Le portefeuille de destination doit être différent du portefeuille source.' }))
-        }
-        await transactionsApi.createTransfer({
-          fromWalletId: walletId,
-          toWalletId: targetWalletId,
-          amount: parsedAmount,
-          note: note.trim() || undefined,
-        })
-      } else {
-        if (!walletId) {
-          throw new Error(t('modals.tx.selectOneWallet', { defaultValue: 'Veuillez sélectionner un portefeuille.' }))
-        }
-        await transactionsApi.create({
+      if (!isOnline) {
+        // Enregistrement offline immédiat dans la file d'attente locale
+        await offlineStorage.enqueueAction('CREATE_TRANSACTION', {
+          id: `local_tx_${Date.now()}`,
+          wallet_id: walletId,
           walletId,
+          category_id: categoryId || null,
           categoryId: categoryId || undefined,
           amount: parsedAmount,
           type: mode as TransactionType,
+          occurred_at: new Date().toISOString(),
           note: note.trim() || undefined,
         })
+      } else {
+        if (mode === 'transfer') {
+          if (!walletId || !targetWalletId) {
+            throw new Error(t('modals.tx.selectWallets', { defaultValue: 'Veuillez sélectionner les portefeuilles source et cible.' }))
+          }
+          if (walletId === targetWalletId) {
+            throw new Error(t('modals.tx.distinctWallets', { defaultValue: 'Le portefeuille de destination doit être différent du portefeuille source.' }))
+          }
+          await transactionsApi.createTransfer({
+            fromWalletId: walletId,
+            toWalletId: targetWalletId,
+            amount: parsedAmount,
+            note: note.trim() || undefined,
+          })
+        } else {
+          if (!walletId) {
+            throw new Error(t('modals.tx.selectOneWallet', { defaultValue: 'Veuillez sélectionner un portefeuille.' }))
+          }
+          try {
+            await transactionsApi.create({
+              walletId,
+              categoryId: categoryId || undefined,
+              amount: parsedAmount,
+              type: mode as TransactionType,
+              note: note.trim() || undefined,
+            })
+          } catch (apiErr) {
+            // Si l'appel réseau échoue (coupure soudaine), basculer en sauvegarde locale
+            console.warn('[TransactionModal] Réseau indisponible, mise en file d attente offline:', apiErr)
+            await offlineStorage.enqueueAction('CREATE_TRANSACTION', {
+              id: `local_tx_${Date.now()}`,
+              wallet_id: walletId,
+              walletId,
+              category_id: categoryId || null,
+              categoryId: categoryId || undefined,
+              amount: parsedAmount,
+              type: mode as TransactionType,
+              occurred_at: new Date().toISOString(),
+              note: note.trim() || undefined,
+            })
+          }
+        }
       }
 
       onSuccess()

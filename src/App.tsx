@@ -66,11 +66,15 @@ function MainApp() {
   )
 }
 
+import { NetworkProvider } from './context/NetworkContext'
+
 function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <NetworkProvider>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </NetworkProvider>
   )
 }
 

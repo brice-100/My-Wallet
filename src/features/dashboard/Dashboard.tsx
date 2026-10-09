@@ -13,14 +13,19 @@ import {
   LogOut,
   User,
   ChevronDown,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
+import { useNetwork } from '../../context/NetworkContext'
 import { walletsApi } from '../../data/wallets'
 import { transactionsApi } from '../../data/transactions'
 import { categoriesApi } from '../../data/categories'
 import { budgetsApi } from '../../data/budgets'
 import { profileApi } from '../../data/profile'
+import { offlineStorage } from '../../lib/offlineStorage'
 import {
   computeFlows,
   groupByCategory,
@@ -81,6 +86,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
   const { t } = useTranslation()
   const { user, profile: authProfile, refreshProfile, signOut } = useAuth()
+  const { isOnline, isSyncing, pendingCount, triggerSync } = useNetwork()
   const [currentTab, setCurrentTab] = useState<AppTab>('dashboard')
   const [profile, setProfile] = useState<Profile | null>(authProfile)
   const [wallets, setWallets] = useState<WalletBalanceView[]>([])
@@ -141,8 +147,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
           }
         )
 
+        const fetchedTx = txRes.status === 'fulfilled' ? txRes.value : []
+        if (fetchedTx.length > 0) {
+          setTransactions(fetchedTx)
+          offlineStorage.cacheTransactions(fetchedTx)
+        } else {
+          const cached = await offlineStorage.getCachedTransactions()
+          setTransactions(cached)
+        }
+
         setWallets(walletsRes.status === 'fulfilled' ? walletsRes.value : [])
-        setTransactions(txRes.status === 'fulfilled' ? txRes.value : [])
         setCategories(catsRes.status === 'fulfilled' ? catsRes.value : [])
         setBudgetProgress(bProgressRes.status === 'fulfilled' ? bProgressRes.value : [])
         setMonthlyFlows(flowsRes.status === 'fulfilled' ? flowsRes.value : [])
@@ -155,8 +169,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
       if (!user) {
         loadDemoData()
       } else {
+        const cached = await offlineStorage.getCachedTransactions()
+        setTransactions(cached)
         setWallets([])
-        setTransactions([])
         setCategories([])
         setBudgetProgress([])
         setMonthlyFlows([])
@@ -571,6 +586,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
             <div className="hidden lg:flex items-center gap-2">
               <LanguageSelector />
               <ThemeToggle />
+            </div>
+
+            {/* Indicateur Réseau & Synchronisation Offline-First */}
+            <div className="flex items-center">
+              {!isOnline ? (
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 text-xs font-semibold"
+                  title="Mode Hors Ligne : vos transactions locales seront synchronisées dès le retour d'Internet"
+                >
+                  <WifiOff className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Hors-ligne</span>
+                  {pendingCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-gray-950 text-[10px] font-black">
+                      {pendingCount}
+                    </span>
+                  )}
+                </div>
+              ) : isSyncing ? (
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 text-xs font-semibold"
+                  title="Synchronisation des données en cours..."
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Sync...</span>
+                </div>
+              ) : pendingCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => triggerSync()}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-xs font-semibold cursor-pointer transition"
+                  title="Des opérations sont en attente de synchronisation. Cliquez pour synchroniser maintenant."
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Sync ({pendingCount})</span>
+                </button>
+              ) : (
+                <div
+                  className="hidden xl:flex items-center gap-1 text-[11px] text-emerald-500/80 px-2 py-0.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5"
+                  title="Connecté et synchronisé"
+                >
+                  <Wifi className="w-3 h-3 text-emerald-400" />
+                  <span>Connecté</span>
+                </div>
+              )}
             </div>
 
             {/* Bouton Connexion si non connecté */}
