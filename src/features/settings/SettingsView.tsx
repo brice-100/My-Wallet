@@ -14,6 +14,7 @@ import {
   Trash2,
   ShieldAlert,
   AlertCircle,
+  KeyRound,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { profileApi } from '../../data/profile'
@@ -21,6 +22,7 @@ import { categoriesApi } from '../../data/categories'
 import { supabase } from '../../lib/supabase'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { LanguageSelector } from '../../components/LanguageSelector'
+import { ChangePasswordModal } from '../auth/ChangePasswordModal'
 import type {
   Category,
   CurrencyCode,
@@ -97,6 +99,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all')
   const [creatingCat, setCreatingCat] = useState(false)
   const [catError, setCatError] = useState<string | null>(null)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
 
   // Validation profil
   const validateProfileField = (field: string, val: any) => {
@@ -771,7 +774,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <ThemeToggle />
             </div>
 
-            {/* Sécurité Supabase */}
+            {/* Sécurité Supabase & Mot de passe */}
+            <div className="p-4 rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/5 border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-emerald-500" />
+                  <span className="text-xs font-bold dark:text-white text-gray-900">
+                    Mot de passe du compte
+                  </span>
+                </div>
+                <span className="text-[11px] text-gray-400 block mt-0.5">
+                  Renforcez votre compte (recommandé si vous aviez un mot de passe court ou numérique).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="py-2 px-3.5 rounded-xl text-xs font-bold text-gray-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition shadow-sm cursor-pointer whitespace-nowrap"
+              >
+                Modifier mon mot de passe
+              </button>
+            </div>
+
             <div className="p-3.5 rounded-xl dark:bg-emerald-950/20 bg-emerald-50 border border-emerald-500/20 flex items-center gap-3">
               <Shield className="w-5 h-5 text-emerald-500 flex-shrink-0" />
               <div>
@@ -798,6 +822,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL CHANGEMENT DE MOT DE PASSE */}
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </div>
   )
 }

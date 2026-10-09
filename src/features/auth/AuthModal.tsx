@@ -20,7 +20,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [fullName, setFullName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  
+
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -66,7 +66,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   const validateAll = () => {
     const errors: Record<string, string> = {}
-    
+
     if (isSignUp) {
       const nameRes = validateFullName(fullName)
       if (!nameRes.isValid) errors.fullName = nameRes.error!
@@ -201,11 +201,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     if (touched.fullName) validateField('fullName', e.target.value)
                   }}
                   onBlur={() => handleBlur('fullName', fullName)}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${
-                    fieldErrors.fullName
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${fieldErrors.fullName
                       ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
                       : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
-                  }`}
+                    }`}
                 />
               </div>
               {fieldErrors.fullName && (
@@ -231,11 +230,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   if (touched.email) validateField('email', e.target.value)
                 }}
                 onBlur={() => handleBlur('email', email)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${
-                  fieldErrors.email
+                className={`w-full pl-10 pr-4 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${fieldErrors.email
                     ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
                     : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
-                }`}
+                  }`}
               />
             </div>
             {fieldErrors.email && (
@@ -271,11 +269,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   }
                 }}
                 onBlur={() => handleBlur('password', password)}
-                className={`w-full pl-10 pr-10 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${
-                  fieldErrors.password
+                className={`w-full pl-10 pr-10 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${fieldErrors.password
                     ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
                     : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
-                }`}
+                  }`}
               />
               <button
                 type="button"
@@ -314,11 +311,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     if (touched.confirmPassword) validateField('confirmPassword', e.target.value)
                   }}
                   onBlur={() => handleBlur('confirmPassword', confirmPassword)}
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${
-                    fieldErrors.confirmPassword
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none text-sm ${fieldErrors.confirmPassword
                       ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
                       : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
-                  }`}
+                    }`}
                 />
                 <button
                   type="button"

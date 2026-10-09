@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { profileApi } from '../../data/profile'
 import { supabase } from '../../lib/supabase'
 import type { CurrencyCode, Profile, Transaction } from '../../types/database'
-import { Settings, X, Loader2, Download, LogOut, Check, AlertCircle } from 'lucide-react'
+import { Settings, X, Loader2, Download, LogOut, Check, AlertCircle, KeyRound } from 'lucide-react'
 import { LanguageSelector } from '../../components/LanguageSelector'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { ChangePasswordModal } from '../auth/ChangePasswordModal'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -31,6 +32,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
 
   if (!isOpen) return null
 
@@ -266,6 +268,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="flex items-center justify-between">
             <div>
+              <p className="text-xs font-semibold dark:text-white text-gray-900">Mot de passe</p>
+              <p className="text-[10px] text-gray-400">Modifier ou renforcer votre mot de passe de connexion.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPasswordModalOpen(true)}
+              className="py-1.5 px-3 rounded-lg border dark:border-white/10 border-gray-200 text-xs font-semibold dark:text-white text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Modifier</span>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-xs font-semibold dark:text-white text-gray-900">Données & Sauvegarde</p>
               <p className="text-[10px] text-gray-400">Exportez l'ensemble de vos transactions au format CSV.</p>
             </div>
@@ -289,6 +306,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* MODAL MODIFIER MOT DE PASSE */}
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </div>
   )
 }
