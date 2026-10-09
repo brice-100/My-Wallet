@@ -398,6 +398,10 @@ const resources = {
         targetUser: 'Cible :',
         byAdmin: 'par',
         noAuditLogs: 'Aucune action consignée pour le moment. Toute action administrative sera enregistrée ici.',
+        promoteAdmin: 'Nommer Admin',
+        revokeAdmin: 'Rétrograder',
+        exportAudit: 'Exporter Logs (CSV)',
+        searchLogsPlaceholder: 'Rechercher un événement, admin ou utilisateur...',
       },
       modals: {
         tx: {
@@ -879,6 +883,10 @@ const resources = {
         targetUser: 'Target:',
         byAdmin: 'by',
         noAuditLogs: 'No operations recorded yet. Every administrative action will appear here.',
+        promoteAdmin: 'Make Admin',
+        revokeAdmin: 'Remove Admin',
+        exportAudit: 'Export Logs (CSV)',
+        searchLogsPlaceholder: 'Search event, admin or user...',
       },
       modals: {
         tx: {

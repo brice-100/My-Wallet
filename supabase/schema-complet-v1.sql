@@ -325,6 +325,10 @@ drop policy if exists "audit_select_admin" on public.admin_audit_log;
 create policy "audit_select_admin" on public.admin_audit_log
   for select to authenticated using ((select public.is_admin()));
 
+drop policy if exists "audit_insert_admin" on public.admin_audit_log;
+create policy "audit_insert_admin" on public.admin_audit_log
+  for insert to authenticated with check ((select public.is_admin()));
+
 -- ---------------------------------------------------------------------
 -- 7. VUES POUR LE DASHBOARD (security_invoker = true)
 -- ---------------------------------------------------------------------

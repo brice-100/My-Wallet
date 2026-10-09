@@ -11,11 +11,13 @@ import {
   Clock,
   RefreshCw,
   Loader2,
+  Download,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrency, formatDate } from '../../lib/formatters'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { auditApi, type AuditLog } from '../../data/audit'
 import type { UserPlan, UserRole, UserStatus, CurrencyCode, Profile } from '../../types/database'
 
 interface AdminUserRecord {
@@ -31,22 +33,14 @@ interface AdminUserRecord {
   created_at: string
 }
 
-interface AuditLogRecord {
-  id: string
-  admin_email: string
-  action: string
-  target_user: string
-  details: string
-  created_at: string
-}
-
 export const AdminView: React.FC = () => {
   const { t } = useTranslation()
   const { user } = useAuth()
   const [users, setUsers] = useState<AdminUserRecord[]>([])
-  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [search, setSearch] = useState('')
+  const [logSearch, setLogSearch] = useState('')
   const [filterPlan, setFilterPlan] = useState<'all' | 'free' | 'premium'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'suspended'>('all')
   const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users')
@@ -67,16 +61,16 @@ export const AdminView: React.FC = () => {
           console.warn('[AdminView] Erreur lecture profils:', profErr)
         }
 
-        // 2. Récupération des portefeuilles et transactions pour les métriques
-        const [walletsRes, txRes, logsRes] = await Promise.allSettled([
+        // 2. Récupération des portefeuilles, transactions et journal d'audit via auditApi
+        const [walletsRes, txRes, logsList] = await Promise.allSettled([
           supabase.from('wallets').select('id, user_id').is('deleted_at', null),
           supabase.from('transactions').select('id, user_id, amount').is('deleted_at', null),
-          supabase.from('admin_audit_log').select('*').order('created_at', { ascending: false }).limit(50),
+          auditApi.getLogs(user.email),
         ])
 
         const allWallets = walletsRes.status === 'fulfilled' ? walletsRes.value.data || [] : []
         const allTransactions = txRes.status === 'fulfilled' ? txRes.value.data || [] : []
-        const allLogs = logsRes.status === 'fulfilled' ? logsRes.value.data || [] : []
+        const loadedLogs = logsList.status === 'fulfilled' ? logsList.value : []
 
         // Construction de la liste des utilisateurs réels
         const rawProfiles: Profile[] = (profilesData as Profile[]) || []
@@ -121,25 +115,7 @@ export const AdminView: React.FC = () => {
         })
 
         setUsers(mappedUsers)
-
-        // Traitement du journal d'audit réel
-        if (allLogs.length > 0) {
-          setAuditLogs(
-            allLogs.map((log: any) => ({
-              id: String(log.id),
-              admin_email: user.email || 'admin@mywallet.app',
-              action: log.action || 'ACTION',
-              target_user: log.target_user_id || 'Utilisateur',
-              details:
-                typeof log.details === 'string'
-                  ? log.details
-                  : JSON.stringify(log.details || ''),
-              created_at: log.created_at || new Date().toISOString(),
-            }))
-          )
-        } else {
-          setAuditLogs([])
-        }
+        setAuditLogs(loadedLogs)
       } else {
         // Hors connexion : aucune fausse donnée
         setUsers([])
@@ -148,6 +124,7 @@ export const AdminView: React.FC = () => {
     } catch (err) {
       console.error('[AdminView] Erreur chargement admin:', err)
       setUsers([])
+      setAuditLogs([])
     } finally {
       setLoading(false)
     }
@@ -186,11 +163,11 @@ export const AdminView: React.FC = () => {
     })
   }, [users, search, filterPlan, filterStatus])
 
-  // Actions Admin réelles (connectées à Supabase)
+  // Actions Admin réelles (connectées à Supabase & auditApi)
   const handleToggleStatus = async (userRecord: AdminUserRecord) => {
     const nextStatus: UserStatus = userRecord.status === 'active' ? 'suspended' : 'active'
     setActionLoadingId(userRecord.id)
-    
+
     // Mise à jour optimiste
     setUsers((prev) =>
       prev.map((u) => (u.id === userRecord.id ? { ...u, status: nextStatus } : u))
@@ -207,31 +184,22 @@ export const AdminView: React.FC = () => {
           console.error('[AdminView] Erreur mise à jour statut:', error)
         }
 
-        // Enregistre dans admin_audit_log
-        try {
-          await supabase
-            .from('admin_audit_log')
-            .insert({
-              admin_id: user.id,
-              action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
-              target_user_id: userRecord.id,
-              details: { target: userRecord.full_name, new_status: nextStatus },
-            })
-        } catch {
-          // Table optionnelle selon la migration
-        }
-      }
+        // Enregistre dans le journal d'audit
+        const newLog = await auditApi.logAction({
+          adminId: user.id,
+          adminEmail: user.email || 'admin@mywallet.app',
+          action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
+          targetUserId: userRecord.id,
+          targetUserName: userRecord.full_name,
+          details:
+            nextStatus === 'suspended'
+              ? `Compte utilisateur suspendu (${userRecord.email})`
+              : `Compte utilisateur réactivé (${userRecord.email})`,
+          metadata: { previous_status: userRecord.status, new_status: nextStatus },
+        })
 
-      // Ajout au journal d'audit local
-      const newLog: AuditLogRecord = {
-        id: `log-${Date.now()}`,
-        admin_email: user?.email || 'admin@mywallet.app',
-        action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
-        target_user: userRecord.full_name,
-        details: `Statut utilisateur modifié vers ${nextStatus.toUpperCase()}`,
-        created_at: new Date().toISOString(),
+        setAuditLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)])
       }
-      setAuditLogs((prev) => [newLog, ...prev])
     } catch (err) {
       console.error('[AdminView] Erreur action statut:', err)
     } finally {
@@ -259,34 +227,127 @@ export const AdminView: React.FC = () => {
           console.error('[AdminView] Erreur mise à jour formule:', error)
         }
 
-        // Enregistre dans admin_audit_log
-        try {
-          await supabase
-            .from('admin_audit_log')
-            .insert({
-              admin_id: user.id,
-              action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
-              target_user_id: userRecord.id,
-              details: { target: userRecord.full_name, new_plan: nextPlan },
-            })
-        } catch {
-          // Table optionnelle selon la migration
-        }
-      }
+        const newLog = await auditApi.logAction({
+          adminId: user.id,
+          adminEmail: user.email || 'admin@mywallet.app',
+          action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
+          targetUserId: userRecord.id,
+          targetUserName: userRecord.full_name,
+          details:
+            nextPlan === 'premium'
+              ? `Surclassement vers Pass Pro Illimité pour ${userRecord.full_name}`
+              : `Passage à la Formule Gratuite pour ${userRecord.full_name}`,
+          metadata: { previous_plan: userRecord.plan, new_plan: nextPlan },
+        })
 
-      const newLog: AuditLogRecord = {
-        id: `log-${Date.now()}`,
-        admin_email: user?.email || 'admin@mywallet.app',
-        action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
-        target_user: userRecord.full_name,
-        details: `Formule SaaS modifiée vers ${nextPlan.toUpperCase()}`,
-        created_at: new Date().toISOString(),
+        setAuditLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)])
       }
-      setAuditLogs((prev) => [newLog, ...prev])
     } catch (err) {
       console.error('[AdminView] Erreur action plan:', err)
     } finally {
       setActionLoadingId(null)
+    }
+  }
+
+  const handleToggleRole = async (userRecord: AdminUserRecord) => {
+    const nextRole: UserRole = userRecord.role === 'admin' ? 'user' : 'admin'
+    setActionLoadingId(userRecord.id)
+
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userRecord.id ? { ...u, role: nextRole } : u))
+    )
+
+    try {
+      if (user) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nextRole, updated_at: new Date().toISOString() })
+          .eq('id', userRecord.id)
+
+        if (error) {
+          console.error('[AdminView] Erreur mise à jour rôle:', error)
+        }
+
+        const newLog = await auditApi.logAction({
+          adminId: user.id,
+          adminEmail: user.email || 'admin@mywallet.app',
+          action: nextRole === 'admin' ? 'PROMOTE_ADMIN' : 'REVOKE_ADMIN',
+          targetUserId: userRecord.id,
+          targetUserName: userRecord.full_name,
+          details:
+            nextRole === 'admin'
+              ? `Promotion au rôle Super-Admin pour ${userRecord.full_name}`
+              : `Révocation des droits Super-Admin pour ${userRecord.full_name}`,
+          metadata: { previous_role: userRecord.role, new_role: nextRole },
+        })
+
+        setAuditLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)])
+      }
+    } catch (err) {
+      console.error('[AdminView] Erreur action rôle:', err)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  // Filtrage et recherche dans le journal d'audit
+  const filteredAuditLogs = useMemo(() => {
+    if (!logSearch.trim()) return auditLogs
+    const q = logSearch.toLowerCase()
+    return auditLogs.filter(
+      (l) =>
+        l.action.toLowerCase().includes(q) ||
+        l.target_user.toLowerCase().includes(q) ||
+        l.admin_email.toLowerCase().includes(q) ||
+        l.details.toLowerCase().includes(q)
+    )
+  }, [auditLogs, logSearch])
+
+  // Exportation CSV native du journal d'audit
+  const handleExportAuditCSV = () => {
+    if (!filteredAuditLogs.length) {
+      alert(t('appAdmin.noAuditLogs'))
+      return
+    }
+
+    const headers = ['ID', 'Date', 'Action', 'Admin', 'Cible', 'Détails']
+    const rows = filteredAuditLogs.map((l) => [
+      l.id,
+      l.created_at,
+      l.action,
+      l.admin_email,
+      `"${l.target_user.replace(/"/g, '""')}"`,
+      `"${l.details.replace(/"/g, '""')}"`,
+    ])
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [headers.join(';'), ...rows.map((e) => e.join(';'))].join('\n')
+
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `journal_audit_mywallet_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const getActionBadgeClass = (action: string) => {
+    switch (action) {
+      case 'SUSPEND_USER':
+      case 'REVOKE_ADMIN':
+        return 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+      case 'ACTIVATE_USER':
+        return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+      case 'UPGRADE_PLAN':
+        return 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+      case 'DOWNGRADE_PLAN':
+        return 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+      case 'PROMOTE_ADMIN':
+        return 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30'
+      default:
+        return 'bg-purple-500/15 text-purple-400 border-purple-500/30'
     }
   }
 
@@ -554,9 +615,23 @@ export const AdminView: React.FC = () => {
                               onClick={() => handleTogglePlan(u)}
                               disabled={isUpdating}
                               className="px-2 py-1 rounded-lg text-[11px] font-semibold dark:bg-gray-800 bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-200 text-gray-800 transition cursor-pointer disabled:opacity-50"
-                              title="Toggle subscription plan"
+                              title="Changer la formule"
                             >
                               {isPro ? t('appAdmin.downgradeToFree') : t('appAdmin.upgradeToPro')}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRole(u)}
+                              disabled={isUpdating || u.id === user?.id}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer disabled:opacity-40 ${
+                                u.role === 'admin'
+                                  ? 'text-indigo-400 hover:bg-indigo-500/10'
+                                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                              }`}
+                              title="Modifier les droits d'administration"
+                            >
+                              {u.role === 'admin' ? t('appAdmin.revokeAdmin') : t('appAdmin.promoteAdmin')}
                             </button>
 
                             <button
@@ -586,7 +661,7 @@ export const AdminView: React.FC = () => {
       {/* 5. CONTENU ONGLET JOURNAL D'AUDIT */}
       {activeTab === 'logs' && (
         <div className="glass-card rounded-2xl border dark:border-white/5 border-gray-200 p-4 sm:p-6 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between border-b dark:border-white/10 border-gray-200 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-white/10 border-gray-200 pb-3">
             <div>
               <h3 className="text-sm font-bold dark:text-white text-gray-900">
                 {t('appAdmin.auditLog')}
@@ -595,20 +670,45 @@ export const AdminView: React.FC = () => {
                 {t('appAdmin.auditAuditDesc')}
               </p>
             </div>
-            <span className="text-xs text-gray-400">{auditLogs.length} {t('appAdmin.eventsCount')}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 font-medium">
+                {filteredAuditLogs.length} / {auditLogs.length} {t('appAdmin.eventsCount')}
+              </span>
+              <button
+                type="button"
+                onClick={handleExportAuditCSV}
+                disabled={filteredAuditLogs.length === 0}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold dark:bg-gray-800 bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border dark:border-white/10 border-gray-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{t('appAdmin.exportAudit')}</span>
+              </button>
+            </div>
           </div>
 
-          {auditLogs.length === 0 ? (
+          {/* Recherche dans les logs */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder={t('appAdmin.searchLogsPlaceholder')}
+              value={logSearch}
+              onChange={(e) => setLogSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 focus:outline-none focus:border-rose-500"
+            />
+          </div>
+
+          {filteredAuditLogs.length === 0 ? (
             <div className="py-8 text-center text-xs text-gray-400">
               {t('appAdmin.noAuditLogs')}
             </div>
           ) : (
             <div className="divide-y dark:divide-white/5 divide-gray-100">
-              {auditLogs.map((log) => (
+              {filteredAuditLogs.map((log) => (
                 <div key={log.id} className="py-3.5 flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${getActionBadgeClass(log.action)}`}>
                         {log.action}
                       </span>
                       <span className="text-xs font-bold dark:text-white text-gray-900">
