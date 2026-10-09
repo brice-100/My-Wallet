@@ -241,7 +241,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold dark:bg-gray-800 bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300 text-gray-700 border dark:border-white/5 border-gray-200 transition cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Sauvegarde CSV</span>
+            <span>{t('appSettings.csvBackup')}</span>
           </button>
         </div>
       </div>
@@ -282,11 +282,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold dark:text-white text-gray-900">
                 {t('appSettings.personalInfo')}
               </h2>
-              <p className="text-xs text-gray-400">Identité et calcul du reste à vivre dynamique.</p>
+              <p className="text-xs text-gray-400">{t('appSettings.personalInfoSubtitle')}</p>
             </div>
             {profileSuccess && (
               <span className="flex items-center gap-1 text-xs text-emerald-500 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-lg">
-                <Check className="w-3.5 h-3.5" /> Enregistré avec succès !
+                <Check className="w-3.5 h-3.5" /> {t('appSettings.profileSaved')}
               </span>
             )}
           </div>
@@ -331,7 +331,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-sm focus:outline-none focus:border-emerald-500"
                 />
                 <p className="text-[10px] text-gray-400 mt-1">
-                  Utilisé pour calculer votre « Reste à vivre / jour » jusqu'au prochain salaire.
+                  {t('appSettings.payDayHelp')}
                 </p>
               </div>
 
@@ -377,7 +377,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {t('appSettings.currencyTab')}
             </h2>
             <p className="text-xs text-gray-400">
-              Choisissez la monnaie utilisée par défaut pour vos soldes consolidés et vos rapports.
+              {t('appSettings.currencySectionSubtitle')}
             </p>
           </div>
 
@@ -426,7 +426,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('appSettings.categoriesTab')}
               </h2>
               <p className="text-xs text-gray-400">
-                15+ catégories africaines prédéfinies avec possibilité d'ajouter et supprimer les vôtres.
+                {t('appSettings.categoriesSectionSubtitle')}
               </p>
             </div>
 
@@ -441,7 +441,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
-                  {filter === 'all' ? 'Toutes' : filter === 'expense' ? 'Dépenses' : 'Revenus'}
+                  {filter === 'all'
+                    ? t('appSettings.allCategories')
+                    : filter === 'expense'
+                    ? t('appSettings.expenseCats')
+                    : t('appSettings.incomeCats')}
                 </button>
               ))}
             </div>
@@ -462,8 +466,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onChange={(e) => setNewCatType(e.target.value as any)}
               className="py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white cursor-pointer"
             >
-              <option value="expense">Dépense</option>
-              <option value="income">Revenu</option>
+              <option value="expense">{t('modals.tx.expense', { defaultValue: 'Dépense' })}</option>
+              <option value="income">{t('modals.tx.income', { defaultValue: 'Revenu' })}</option>
             </select>
             <button
               type="submit"
@@ -531,16 +535,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {t('appSettings.subscriptionTab')}
                 </h2>
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
-                  Plan actif : {currentPlan.toUpperCase()}
+                  {t('appSettings.activePlan')} {currentPlan.toUpperCase()}
                 </span>
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
-                Paiement flexible par Mobile Money (Wave, Orange Money, MTN MoMo).
+                {t('appSettings.paymentSubtitle')}
               </p>
             </div>
             {planSuccess && (
               <span className="text-xs text-emerald-500 font-bold bg-emerald-500/10 px-3 py-1 rounded-xl">
-                ✓ Plan mis à jour !
+                {t('appSettings.planUpdated')}
               </span>
             )}
           </div>
@@ -562,16 +566,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   0 FCFA
                 </span>
               </div>
-              <p className="text-xs text-gray-400 mb-4">Pour démarrer et suivre son budget quotidien.</p>
+              <p className="text-xs text-gray-400 mb-4">{t('appSettings.freeDesc')}</p>
               <ul className="text-xs space-y-2 mb-5 dark:text-gray-300 text-gray-700">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Jusqu'à 3 portefeuilles (Cash, Wave)
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.freeF1')}
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Transactions illimitées
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.freeF2')}
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Graphiques de base & Reste à vivre
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.freeF3')}
                 </li>
               </ul>
               <button
@@ -580,7 +584,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 disabled={currentPlan === 'free'}
                 className="w-full py-2.5 rounded-xl text-xs font-bold border dark:border-white/10 border-gray-300 dark:text-white text-gray-800 disabled:opacity-50 cursor-pointer"
               >
-                {currentPlan === 'free' ? 'Plan Actuel' : 'Basculer en Gratuit'}
+                {currentPlan === 'free' ? t('appSettings.currentPlan') : t('appSettings.switchToFree')}
               </button>
             </div>
 
@@ -593,29 +597,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }`}
             >
               <div className="absolute -top-2.5 right-4 bg-gradient-to-r from-emerald-400 to-teal-400 text-gray-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                RECOMMANDÉ
+                {t('appSettings.recommended')}
               </div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold dark:text-white text-gray-900">
                   {t('appSettings.proPlan')}
                 </span>
-                <span className="text-sm font-extrabold text-emerald-500">1 500 FCFA / mois</span>
+                <span className="text-sm font-extrabold text-emerald-500">{t('appSettings.proPrice')}</span>
               </div>
               <p className="text-xs text-gray-400 mb-4">
-                Portefeuilles illimités, tontines avancées & rapports experts.
+                {t('appSettings.proDesc')}
               </p>
               <ul className="text-xs space-y-2 mb-5 dark:text-gray-300 text-gray-700">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Portefeuilles illimités (Wave, OM, MoMo, Banques)
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.proF1')}
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Module complet Tontines & Dettes avec rappels
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.proF2')}
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Export CSV & Excel illimités
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.proF3')}
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Support WhatsApp prioritaire 7j/7
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {t('appSettings.proF4')}
                 </li>
               </ul>
               <button
@@ -623,7 +627,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onClick={() => handleSelectPlan('premium')}
                 className="w-full py-2.5 rounded-xl text-xs font-bold text-gray-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition shadow-md shadow-emerald-900/30 cursor-pointer"
               >
-                {currentPlan === 'premium' ? 'Plan Actif ✓' : 'Activer avec Mobile Money'}
+                {currentPlan === 'premium' ? t('appSettings.proActive') : t('appSettings.upgradeCta')}
               </button>
             </div>
           </div>
@@ -637,7 +641,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <h2 className="text-base font-bold dark:text-white text-gray-900">
               {t('appSettings.securityTab')}
             </h2>
-            <p className="text-xs text-gray-400">Protection des données et préférences d'interface.</p>
+            <p className="text-xs text-gray-400">{t('appSettings.securitySubtitle')}</p>
           </div>
 
           <div className="space-y-4 max-w-lg">
@@ -647,7 +651,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="text-xs font-semibold dark:text-white text-gray-900 block">
                   {t('appSettings.langTitle')}
                 </span>
-                <span className="text-[11px] text-gray-400">Français ou Anglais</span>
+                <span className="text-[11px] text-gray-400">{t('appSettings.langDesc')}</span>
               </div>
               <LanguageSelector />
             </div>
@@ -657,7 +661,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="text-xs font-semibold dark:text-white text-gray-900 block">
                   {t('appSettings.themeTitle')}
                 </span>
-                <span className="text-[11px] text-gray-400">Mode Sombre / Mode Clair</span>
+                <span className="text-[11px] text-gray-400">{t('appSettings.themeDesc')}</span>
               </div>
               <ThemeToggle />
             </div>
@@ -667,10 +671,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Shield className="w-5 h-5 text-emerald-500 flex-shrink-0" />
               <div>
                 <span className="text-xs font-bold text-emerald-500 block">
-                  Protection Row Level Security (RLS) Active
+                  {t('appSettings.rlsActive')}
                 </span>
                 <span className="text-[11px] text-gray-400">
-                  Vos données sont strictement isolées par votre identifiant Supabase.
+                  {t('appSettings.rlsDesc')}
                 </span>
               </div>
             </div>

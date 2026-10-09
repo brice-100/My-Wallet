@@ -139,7 +139,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
       }
     } catch (err) {
       console.error('Erreur chargement Supabase:', err)
-      loadDemoData()
+      if (!user) {
+        loadDemoData()
+      } else {
+        setWallets([])
+        setTransactions([])
+        setCategories([])
+        setBudgetProgress([])
+        setMonthlyFlows([])
+      }
     } finally {
       setLoading(false)
     }

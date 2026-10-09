@@ -1,10 +1,14 @@
 import type { CurrencyCode, WalletType } from '../types/database'
+import i18n from './i18n'
 
 /**
- * Formate un montant en devise africaine (ex: 250 000 FCFA)
+ * Formate un montant en devise africaine (ex: 250 000 FCFA ou 250,000 FCFA)
  */
 export function formatCurrency(amount: number, currency: CurrencyCode = 'XOF'): string {
-  const formattedNumber = new Intl.NumberFormat('fr-FR', {
+  const isEn = i18n.language?.startsWith('en')
+  const locale = isEn ? 'en-US' : 'fr-FR'
+
+  const formattedNumber = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 0,
   }).format(amount)
 
@@ -28,12 +32,15 @@ export function formatCurrency(amount: number, currency: CurrencyCode = 'XOF'): 
 }
 
 /**
- * Formate une date au format lisible français (ex: 8 oct. 2026)
+ * Formate une date au format lisible selon la langue active (ex: 8 oct. 2026 ou Oct 8, 2026)
  */
 export function formatDate(dateString: string): string {
   try {
     const d = new Date(dateString)
-    return new Intl.DateTimeFormat('fr-FR', {
+    const isEn = i18n.language?.startsWith('en')
+    const locale = isEn ? 'en-US' : 'fr-FR'
+
+    return new Intl.DateTimeFormat(locale, {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -87,13 +94,15 @@ export function getWalletStyle(type: WalletType, provider?: string | null): {
     }
   }
 
+  const isEn = i18n.language?.startsWith('en')
+
   switch (type) {
     case 'cash':
       return {
         color: 'text-emerald-400',
         bg: 'bg-emerald-500/15',
         border: 'border-emerald-500/30',
-        label: 'Cash (Espèces)',
+        label: isEn ? 'Cash' : 'Cash (Espèces)',
       }
     case 'mobile_money':
       return {
@@ -107,14 +116,14 @@ export function getWalletStyle(type: WalletType, provider?: string | null): {
         color: 'text-indigo-400',
         bg: 'bg-indigo-500/15',
         border: 'border-indigo-500/30',
-        label: provider || 'Banque',
+        label: provider || (isEn ? 'Bank' : 'Banque'),
       }
     default:
       return {
         color: 'text-gray-400',
         bg: 'bg-gray-500/15',
         border: 'border-gray-500/30',
-        label: 'Autre',
+        label: isEn ? 'Other' : 'Autre',
       }
   }
 }

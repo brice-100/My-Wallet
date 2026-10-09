@@ -271,7 +271,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
           <div className="text-xl sm:text-2xl font-black text-sky-500 dark:text-sky-400">
             {formatCurrency(stats.pendingLent, currency)}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Prêts accordés à recouvrer</p>
+          <p className="text-[11px] text-gray-400 mt-1">{t('appTontines.loansToCollect')}</p>
         </div>
 
         {/* Dettes ("Je dois") */}
@@ -285,7 +285,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
           <div className="text-xl sm:text-2xl font-black text-rose-500 dark:text-rose-400">
             {formatCurrency(stats.pendingBorrowed, currency)}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Dettes en cours à rembourser</p>
+          <p className="text-[11px] text-gray-400 mt-1">{t('appTontines.debtsToRepay')}</p>
         </div>
 
         {/* Balance Nette Informelle */}
@@ -304,7 +304,9 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
             {stats.netInformal >= 0 ? '+' : ''}
             {formatCurrency(stats.netInformal, currency)}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Créances nettes après dettes</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {stats.netInformal >= 0 ? t('appTontines.loansToCollect') : t('appTontines.debtsToRepay')}
+          </p>
         </div>
       </div>
 
@@ -386,11 +388,11 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Cotisation :{' '}
+                        {t('appTontines.contributionUnit')}{' '}
                         <strong className="text-emerald-500">
                           {formatCurrency(tontine.contribution_amount, currency)}
                         </strong>{' '}
-                        / {tontine.frequency === 'monthly' ? 'mois' : 'semaine'}
+                        / {tontine.frequency === 'monthly' ? t('appTontines.perMonth') : t('appTontines.perWeek')}
                       </p>
                     </div>
 
@@ -440,7 +442,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                   {/* Jauge de progression */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-400">Total déjà cotisé :</span>
+                      <span className="text-gray-400">{t('appTontines.totalContributedSoFar')}</span>
                       <span className="font-bold dark:text-white text-gray-900">
                         {formatCurrency(tontine.contributed_so_far, currency)} ({percent}%)
                       </span>
@@ -456,7 +458,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                   <div className="pt-2 flex items-center justify-between border-t dark:border-white/5 border-gray-100">
                     <span className="text-xs text-gray-400 flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                      Statut : À jour
+                      {t('appTontines.settled')}
                     </span>
 
                     <button
@@ -464,7 +466,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                       onClick={() => handleContribute(tontine)}
                       className="py-1.5 px-3 rounded-xl text-xs font-bold text-gray-950 bg-emerald-400 hover:bg-emerald-300 transition active:scale-95 shadow-sm cursor-pointer"
                     >
-                      + {t('appTontines.contributeNow')}{' '}
+                      + {t('appTontines.contributeAction')}{' '}
                       {formatCurrency(tontine.contribution_amount, currency)}
                     </button>
                   </div>
@@ -481,7 +483,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
         <div className="space-y-4">
           {/* Filtres internes pour dettes */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 font-medium">Afficher :</span>
+            <span className="text-xs text-gray-400 font-medium">{t('appTontines.displayFilter')}</span>
             {(['all', 'lent', 'borrowed'] as const).map((filter) => (
               <button
                 key={filter}
@@ -601,7 +603,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                       </div>
                       {d.due_date && (
                         <span className="text-[10px] text-gray-400 block mt-0.5">
-                          Échéance : {d.due_date}
+                          {t('appTontines.dueDate')} : {d.due_date}
                         </span>
                       )}
                     </div>
@@ -609,7 +611,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
                   <div className="pt-2 flex items-center justify-between border-t dark:border-white/5 border-gray-100 text-xs">
                     <span className="text-[11px] text-gray-400">
-                      Enregistré le {formatDate(d.created_at)}
+                      {formatDate(d.created_at)}
                     </span>
 
                     <div className="flex items-center gap-2">
@@ -654,18 +656,18 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               {t('appTontines.createTontine')}
             </h2>
             <p className="text-xs text-gray-400 mb-4">
-              Enregistrez un cercle d'épargne avec vos collègues ou votre famille.
+              {t('appTontines.tontineModalSubtitle')}
             </p>
 
             <form onSubmit={handleCreateTontine} className="space-y-3">
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  Nom de la Tontine
+                  {t('appTontines.tontineName')}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ex: Tontine du Bureau, Tontine Solidarité"
+                  placeholder={t('appTontines.tontineNamePlaceholder')}
                   value={tName}
                   onChange={(e) => setTName(e.target.value)}
                   className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
@@ -675,7 +677,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Cotisation unitaire (FCFA)
+                    {t('appTontines.contributionAmount')}
                   </label>
                   <input
                     type="number"
@@ -689,7 +691,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Nombre de membres
+                    {t('appTontines.membersCount')}
                   </label>
                   <input
                     type="number"
@@ -706,25 +708,25 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Fréquence
+                    {t('appTontines.frequency')}
                   </label>
                   <select
                     value={tFreq}
                     onChange={(e) => setTFreq(e.target.value as any)}
                     className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
                   >
-                    <option value="monthly">Mensuelle</option>
-                    <option value="biweekly">Toutes les 2 semaines</option>
-                    <option value="weekly">Hebdomadaire</option>
+                    <option value="monthly">{t('appTontines.freqMonthly')}</option>
+                    <option value="biweekly">{t('appTontines.freqBiweekly')}</option>
+                    <option value="weekly">{t('appTontines.freqWeekly')}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Mon mois de ramassage
+                    {t('appTontines.myTurnMonth')}
                   </label>
                   <input
                     type="text"
-                    placeholder="ex: Décembre 2026"
+                    placeholder={t('appTontines.myTurnMonthPlaceholder')}
                     value={tTurnMonth}
                     onChange={(e) => setTTurnMonth(e.target.value)}
                     className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
@@ -734,7 +736,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  Compte de paiement associé
+                  {t('appTontines.associatedWallet')}
                 </label>
                 <select
                   value={tWalletId}
@@ -753,7 +755,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                 type="submit"
                 className="w-full mt-4 py-2.5 rounded-xl font-bold text-xs text-gray-950 bg-emerald-400 hover:bg-emerald-300 transition cursor-pointer"
               >
-                Enregistrer la Tontine
+                {t('appTontines.saveTontine')}
               </button>
             </form>
           </div>
@@ -774,7 +776,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               {t('appTontines.recordDebt')}
             </h2>
             <p className="text-xs text-gray-400 mb-4">
-              Suivez précisément « Qui doit à qui » pour éviter les oublis avec vos proches.
+              {t('appTontines.debtModalSubtitle')}
             </p>
 
             <form onSubmit={handleCreateDebt} className="space-y-3">
@@ -806,12 +808,12 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  Nom du Contact / Proche
+                  {t('appTontines.contactName')}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ex: Moussa Traoré, Maman, Aminata"
+                  placeholder={t('appTontines.contactPlaceholder')}
                   value={dPerson}
                   onChange={(e) => setDPerson(e.target.value)}
                   className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
@@ -821,7 +823,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Montant (FCFA)
+                    {t('appTontines.amountLabel')}
                   </label>
                   <input
                     type="number"
@@ -835,7 +837,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    Échéance promise
+                    {t('appTontines.dueDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -848,11 +850,11 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  Note / Motif du prêt
+                  {t('appTontines.debtNote')}
                 </label>
                 <input
                   type="text"
-                  placeholder="ex: Dépannage carburant, avance loyer"
+                  placeholder={t('appTontines.debtNotePlaceholder')}
                   value={dNote}
                   onChange={(e) => setDNote(e.target.value)}
                   className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
@@ -861,7 +863,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  Portefeuille associé (Wave, Orange Money, Cash...)
+                  {t('appTontines.associatedWalletDebt')}
                 </label>
                 <select
                   value={dWalletId}
@@ -880,7 +882,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
                 type="submit"
                 className="w-full mt-4 py-2.5 rounded-xl font-bold text-xs text-gray-950 bg-amber-400 hover:bg-amber-300 transition cursor-pointer"
               >
-                Enregistrer l'engagement
+                {t('appTontines.saveDebt')}
               </button>
             </form>
           </div>

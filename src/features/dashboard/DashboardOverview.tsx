@@ -292,7 +292,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       ))}
                     </Pie>
                     <RechartsTooltip
-                      formatter={(value: any) => [formatCurrency(Number(value), currency), 'Montant']}
+                      formatter={(value: any) => [formatCurrency(Number(value), currency), t('appTontines.amount', { defaultValue: 'Montant' })]}
                       contentStyle={{
                         backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
                         borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',

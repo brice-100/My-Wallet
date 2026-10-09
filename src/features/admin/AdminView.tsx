@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ShieldAlert,
   Users,
@@ -9,10 +9,14 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrency, formatDate } from '../../lib/formatters'
-import type { UserPlan, UserRole, UserStatus, CurrencyCode } from '../../types/database'
+import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../lib/supabase'
+import type { UserPlan, UserRole, UserStatus, CurrencyCode, Profile } from '../../types/database'
 
 interface AdminUserRecord {
   id: string
@@ -36,118 +40,136 @@ interface AuditLogRecord {
   created_at: string
 }
 
-const INITIAL_MOCK_USERS: AdminUserRecord[] = [
-  {
-    id: 'usr-1',
-    full_name: 'Mamadou Diallo',
-    email: 'mamadou.diallo@orange.ci',
-    currency: 'XOF',
-    plan: 'premium',
-    role: 'user',
-    status: 'active',
-    wallets_count: 4,
-    total_volume: 4850000,
-    created_at: '2026-06-12T10:00:00Z',
-  },
-  {
-    id: 'usr-2',
-    full_name: 'Aminata Diop',
-    email: 'aminata.diop@wave.sn',
-    currency: 'XOF',
-    plan: 'free',
-    role: 'user',
-    status: 'active',
-    wallets_count: 2,
-    total_volume: 1250000,
-    created_at: '2026-07-20T14:30:00Z',
-  },
-  {
-    id: 'usr-3',
-    full_name: 'Koffi Mensah',
-    email: 'koffi.mensah@ecobank.tg',
-    currency: 'XOF',
-    plan: 'premium',
-    role: 'user',
-    status: 'active',
-    wallets_count: 5,
-    total_volume: 8900000,
-    created_at: '2026-08-01T09:15:00Z',
-  },
-  {
-    id: 'usr-4',
-    full_name: 'Fatou Bamba',
-    email: 'fatou.bamba@gmail.com',
-    currency: 'XOF',
-    plan: 'free',
-    role: 'user',
-    status: 'suspended',
-    wallets_count: 1,
-    total_volume: 150000,
-    created_at: '2026-08-15T11:45:00Z',
-  },
-  {
-    id: 'usr-5',
-    full_name: 'Alexandre Admin',
-    email: 'admin@mywallet-africa.com',
-    currency: 'XOF',
-    plan: 'premium',
-    role: 'admin',
-    status: 'active',
-    wallets_count: 6,
-    total_volume: 12400000,
-    created_at: '2026-05-01T08:00:00Z',
-  },
-]
-
-const INITIAL_AUDIT_LOGS: AuditLogRecord[] = [
-  {
-    id: 'log-1',
-    admin_email: 'admin@mywallet-africa.com',
-    action: 'UPGRADE_PLAN',
-    target_user: 'Koffi Mensah',
-    details: 'Passage au Pass Pro Illimité suite à paiement Mobile Money Wave (1 500 FCFA)',
-    created_at: '2026-10-08T18:20:00Z',
-  },
-  {
-    id: 'log-2',
-    admin_email: 'admin@mywallet-africa.com',
-    action: 'SUSPEND_USER',
-    target_user: 'Fatou Bamba',
-    details: 'Compte suspendu pour tentative d’activité suspecte sur transferts multiples',
-    created_at: '2026-10-07T12:00:00Z',
-  },
-  {
-    id: 'log-3',
-    admin_email: 'admin@mywallet-africa.com',
-    action: 'POLICY_AUDIT',
-    target_user: 'Système',
-    details: 'Vérification de conformité RLS Postgres : Isolation multi-tenant 100% opérationnelle',
-    created_at: '2026-10-06T09:30:00Z',
-  },
-]
-
 export const AdminView: React.FC = () => {
   const { t } = useTranslation()
-  const [users, setUsers] = useState<AdminUserRecord[]>(INITIAL_MOCK_USERS)
-  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>(INITIAL_AUDIT_LOGS)
+  const { user } = useAuth()
+  const [users, setUsers] = useState<AdminUserRecord[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
   const [search, setSearch] = useState('')
   const [filterPlan, setFilterPlan] = useState<'all' | 'free' | 'premium'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'suspended'>('all')
   const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users')
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
-  // Statistiques plateforme
+  // Chargement des données réelles depuis Supabase
+  const loadRealAdminData = useCallback(async () => {
+    setLoading(true)
+    try {
+      if (user) {
+        // 1. Récupération des profils réels
+        const { data: profilesData, error: profErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (profErr) {
+          console.warn('[AdminView] Erreur lecture profils:', profErr)
+        }
+
+        // 2. Récupération des portefeuilles et transactions pour les métriques
+        const [walletsRes, txRes, logsRes] = await Promise.allSettled([
+          supabase.from('wallets').select('id, user_id').is('deleted_at', null),
+          supabase.from('transactions').select('id, user_id, amount').is('deleted_at', null),
+          supabase.from('admin_audit_log').select('*').order('created_at', { ascending: false }).limit(50),
+        ])
+
+        const allWallets = walletsRes.status === 'fulfilled' ? walletsRes.value.data || [] : []
+        const allTransactions = txRes.status === 'fulfilled' ? txRes.value.data || [] : []
+        const allLogs = logsRes.status === 'fulfilled' ? logsRes.value.data || [] : []
+
+        // Construction de la liste des utilisateurs réels
+        const rawProfiles: Profile[] = (profilesData as Profile[]) || []
+        
+        // Si aucun profil retourné mais utilisateur connecté (admin), on s'assure qu'au moins l'admin est présent
+        const profilesList: Profile[] = rawProfiles.length > 0 ? rawProfiles : [
+          {
+            id: user.id,
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Super Admin',
+            currency: 'XOF',
+            pay_day: 1,
+            plan: 'premium',
+            role: 'admin',
+            status: 'active',
+            created_at: user.created_at || new Date().toISOString(),
+            updated_at: user.created_at || new Date().toISOString(),
+          }
+        ]
+
+        const mappedUsers: AdminUserRecord[] = profilesList.map((p) => {
+          const userWallets = allWallets.filter((w) => w.user_id === p.id)
+          const userTxs = allTransactions.filter((tx) => tx.user_id === p.id)
+          const userVolume = userTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0)
+
+          const email =
+            p.id === user.id
+              ? user.email || 'admin@mywallet.app'
+              : (p as any).email || `${(p.full_name || 'user').toLowerCase().replace(/\s+/g, '.') || 'utilisateur'}@compte.app`
+
+          return {
+            id: p.id,
+            full_name: p.full_name || (p.id === user.id ? 'Administrateur' : 'Utilisateur'),
+            email,
+            currency: p.currency || 'XOF',
+            plan: p.plan || 'free',
+            role: p.role || 'user',
+            status: p.status || 'active',
+            wallets_count: userWallets.length,
+            total_volume: userVolume,
+            created_at: p.created_at || new Date().toISOString(),
+          }
+        })
+
+        setUsers(mappedUsers)
+
+        // Traitement du journal d'audit réel
+        if (allLogs.length > 0) {
+          setAuditLogs(
+            allLogs.map((log: any) => ({
+              id: String(log.id),
+              admin_email: user.email || 'admin@mywallet.app',
+              action: log.action || 'ACTION',
+              target_user: log.target_user_id || 'Utilisateur',
+              details:
+                typeof log.details === 'string'
+                  ? log.details
+                  : JSON.stringify(log.details || ''),
+              created_at: log.created_at || new Date().toISOString(),
+            }))
+          )
+        } else {
+          setAuditLogs([])
+        }
+      } else {
+        // Hors connexion : aucune fausse donnée
+        setUsers([])
+        setAuditLogs([])
+      }
+    } catch (err) {
+      console.error('[AdminView] Erreur chargement admin:', err)
+      setUsers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    loadRealAdminData()
+  }, [loadRealAdminData])
+
+  // Statistiques plateforme calculées dynamiquement sur les données réelles
   const platformStats = useMemo(() => {
-    const totalUsers = 1428
-    const totalVolume = 284500000 // 284.5M FCFA
-    const totalPremium = 382
-    const totalWallets = 3190
+    const totalUsers = users.length
+    const totalVolume = users.reduce((acc, u) => acc + (u.total_volume || 0), 0)
+    const totalPremium = users.filter((u) => u.plan === 'premium').length
+    const totalWallets = users.reduce((acc, u) => acc + (u.wallets_count || 0), 0)
     return {
       totalUsers,
       totalVolume,
       totalPremium,
       totalWallets,
     }
-  }, [])
+  }, [users])
 
   // Filtrage des utilisateurs
   const filteredUsers = useMemo(() => {
@@ -164,40 +186,108 @@ export const AdminView: React.FC = () => {
     })
   }, [users, search, filterPlan, filterStatus])
 
-  // Actions Admin
-  const handleToggleStatus = (userRecord: AdminUserRecord) => {
+  // Actions Admin réelles (connectées à Supabase)
+  const handleToggleStatus = async (userRecord: AdminUserRecord) => {
     const nextStatus: UserStatus = userRecord.status === 'active' ? 'suspended' : 'active'
+    setActionLoadingId(userRecord.id)
+    
+    // Mise à jour optimiste
     setUsers((prev) =>
       prev.map((u) => (u.id === userRecord.id ? { ...u, status: nextStatus } : u))
     )
 
-    // Enregistre dans le journal d'audit
-    const newLog: AuditLogRecord = {
-      id: `log-${Date.now()}`,
-      admin_email: 'admin@mywallet-africa.com',
-      action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
-      target_user: userRecord.full_name,
-      details: `Statut utilisateur modifié vers ${nextStatus.toUpperCase()}`,
-      created_at: new Date().toISOString(),
+    try {
+      if (user) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ status: nextStatus, updated_at: new Date().toISOString() })
+          .eq('id', userRecord.id)
+
+        if (error) {
+          console.error('[AdminView] Erreur mise à jour statut:', error)
+        }
+
+        // Enregistre dans admin_audit_log
+        try {
+          await supabase
+            .from('admin_audit_log')
+            .insert({
+              admin_id: user.id,
+              action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
+              target_user_id: userRecord.id,
+              details: { target: userRecord.full_name, new_status: nextStatus },
+            })
+        } catch {
+          // Table optionnelle selon la migration
+        }
+      }
+
+      // Ajout au journal d'audit local
+      const newLog: AuditLogRecord = {
+        id: `log-${Date.now()}`,
+        admin_email: user?.email || 'admin@mywallet.app',
+        action: nextStatus === 'suspended' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
+        target_user: userRecord.full_name,
+        details: `Statut utilisateur modifié vers ${nextStatus.toUpperCase()}`,
+        created_at: new Date().toISOString(),
+      }
+      setAuditLogs((prev) => [newLog, ...prev])
+    } catch (err) {
+      console.error('[AdminView] Erreur action statut:', err)
+    } finally {
+      setActionLoadingId(null)
     }
-    setAuditLogs([newLog, ...auditLogs])
   }
 
-  const handleTogglePlan = (userRecord: AdminUserRecord) => {
+  const handleTogglePlan = async (userRecord: AdminUserRecord) => {
     const nextPlan: UserPlan = userRecord.plan === 'free' ? 'premium' : 'free'
+    setActionLoadingId(userRecord.id)
+
+    // Mise à jour optimiste
     setUsers((prev) =>
       prev.map((u) => (u.id === userRecord.id ? { ...u, plan: nextPlan } : u))
     )
 
-    const newLog: AuditLogRecord = {
-      id: `log-${Date.now()}`,
-      admin_email: 'admin@mywallet-africa.com',
-      action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
-      target_user: userRecord.full_name,
-      details: `Formule SaaS modifiée vers ${nextPlan.toUpperCase()}`,
-      created_at: new Date().toISOString(),
+    try {
+      if (user) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ plan: nextPlan, updated_at: new Date().toISOString() })
+          .eq('id', userRecord.id)
+
+        if (error) {
+          console.error('[AdminView] Erreur mise à jour formule:', error)
+        }
+
+        // Enregistre dans admin_audit_log
+        try {
+          await supabase
+            .from('admin_audit_log')
+            .insert({
+              admin_id: user.id,
+              action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
+              target_user_id: userRecord.id,
+              details: { target: userRecord.full_name, new_plan: nextPlan },
+            })
+        } catch {
+          // Table optionnelle selon la migration
+        }
+      }
+
+      const newLog: AuditLogRecord = {
+        id: `log-${Date.now()}`,
+        admin_email: user?.email || 'admin@mywallet.app',
+        action: nextPlan === 'premium' ? 'UPGRADE_PLAN' : 'DOWNGRADE_PLAN',
+        target_user: userRecord.full_name,
+        details: `Formule SaaS modifiée vers ${nextPlan.toUpperCase()}`,
+        created_at: new Date().toISOString(),
+      }
+      setAuditLogs((prev) => [newLog, ...prev])
+    } catch (err) {
+      console.error('[AdminView] Erreur action plan:', err)
+    } finally {
+      setActionLoadingId(null)
     }
-    setAuditLogs([newLog, ...auditLogs])
   }
 
   return (
@@ -218,15 +308,25 @@ export const AdminView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={loadRealAdminData}
+            disabled={loading}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold dark:bg-gray-800 bg-white hover:bg-gray-100 dark:hover:bg-gray-700 border dark:border-white/10 border-gray-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>{t('appAdmin.refresh')}</span>
+          </button>
+
           <span className="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-500 dark:text-rose-300 text-xs font-bold border border-rose-500/30 flex items-center gap-1.5">
             <ShieldAlert className="w-4 h-4" />
-            Accès Super-Administrateur
+            {t('appAdmin.superAdmin')}
           </span>
         </div>
       </div>
 
-      {/* 2. KPIs Globaux de la Plateforme */}
+      {/* 2. KPIs Globaux de la Plateforme (Données Réelles) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         {/* Total Utilisateurs */}
         <div className="glass-card card-hover-effect p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
@@ -239,7 +339,9 @@ export const AdminView: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black dark:text-white text-gray-900">
             {platformStats.totalUsers.toLocaleString()}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">+24 inscriptions aujourd'hui</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {platformStats.totalUsers <= 1 ? t('appAdmin.activeUserCount') : t('appAdmin.activeUsersCount')}
+          </p>
         </div>
 
         {/* Volume Global Transigé */}
@@ -253,7 +355,7 @@ export const AdminView: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black dark:text-white text-gray-900">
             {formatCurrency(platformStats.totalVolume, 'XOF')}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Wave, OM, MoMo & Banques</p>
+          <p className="text-[11px] text-gray-400 mt-1">{t('appAdmin.realFlows')}</p>
         </div>
 
         {/* Abonnements Premium */}
@@ -265,9 +367,14 @@ export const AdminView: React.FC = () => {
             <CreditCard className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-amber-500">
-            {platformStats.totalPremium} <span className="text-xs font-normal text-gray-400">(26.7%)</span>
+            {platformStats.totalPremium}{' '}
+            <span className="text-xs font-normal text-gray-400">
+              ({platformStats.totalUsers > 0 ? Math.round((platformStats.totalPremium / platformStats.totalUsers) * 100) : 0}%)
+            </span>
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">MRR : ~573 000 FCFA/mois</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {t('appAdmin.mrrMonth', { amount: formatCurrency(platformStats.totalPremium * 1500, 'XOF') })}
+          </p>
         </div>
 
         {/* Portefeuilles Créés */}
@@ -281,7 +388,11 @@ export const AdminView: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black dark:text-white text-gray-900">
             {platformStats.totalWallets.toLocaleString()}
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Moyenne : 2.2 comptes / user</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {platformStats.totalUsers > 0
+              ? `${(platformStats.totalWallets / platformStats.totalUsers).toFixed(1)} ${t('appAdmin.accountsPerUser')}`
+              : t('appAdmin.zeroAccounts')}
+          </p>
         </div>
       </div>
 
@@ -334,9 +445,9 @@ export const AdminView: React.FC = () => {
                 onChange={(e) => setFilterPlan(e.target.value as any)}
                 className="py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white cursor-pointer"
               >
-                <option value="all">Tous les plans</option>
-                <option value="free">Gratuit</option>
-                <option value="premium">Pass Pro</option>
+                <option value="all">{t('appAdmin.allPlans')}</option>
+                <option value="free">{t('appAdmin.freePlan')}</option>
+                <option value="premium">{t('appAdmin.proPlan')}</option>
               </select>
 
               <select
@@ -344,116 +455,130 @@ export const AdminView: React.FC = () => {
                 onChange={(e) => setFilterStatus(e.target.value as any)}
                 className="py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white cursor-pointer"
               >
-                <option value="all">Tous les statuts</option>
-                <option value="active">Actif</option>
-                <option value="suspended">Suspendu</option>
+                <option value="all">{t('appAdmin.allStatuses')}</option>
+                <option value="active">{t('appAdmin.activeStatus')}</option>
+                <option value="suspended">{t('appAdmin.suspendedStatus')}</option>
               </select>
             </div>
           </div>
 
           {/* Table Responsive des Utilisateurs */}
           <div className="glass-card rounded-2xl border dark:border-white/5 border-gray-200 overflow-x-auto shadow-sm">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b dark:border-white/10 border-gray-200 dark:bg-gray-900/60 bg-gray-50 text-gray-400 uppercase text-[10px] tracking-wider">
-                  <th className="p-3.5">{t('appAdmin.userCol')}</th>
-                  <th className="p-3.5">{t('appAdmin.planCol')}</th>
-                  <th className="p-3.5">{t('appAdmin.roleCol')}</th>
-                  <th className="p-3.5">Portefeuilles</th>
-                  <th className="p-3.5">Volume Cumulé</th>
-                  <th className="p-3.5">{t('appAdmin.statusCol')}</th>
-                  <th className="p-3.5 text-right">{t('appAdmin.actionsCol')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y dark:divide-white/5 divide-gray-100">
-                {filteredUsers.map((u) => {
-                  const isActive = u.status === 'active'
-                  const isPro = u.plan === 'premium'
+            {loading ? (
+              <div className="p-12 text-center">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto text-rose-500 mb-2" />
+                <p className="text-xs text-gray-400">{t('appAdmin.loadingRealUsers')}</p>
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 text-xs">
+                {t('appAdmin.noFilteredUsers')}
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b dark:border-white/10 border-gray-200 dark:bg-gray-900/60 bg-gray-50 text-gray-400 uppercase text-[10px] tracking-wider">
+                    <th className="p-3.5">{t('appAdmin.userCol')}</th>
+                    <th className="p-3.5">{t('appAdmin.planCol')}</th>
+                    <th className="p-3.5">{t('appAdmin.roleCol')}</th>
+                    <th className="p-3.5">{t('appDashboard.dedicatedWallets')}</th>
+                    <th className="p-3.5">{t('appAdmin.activeVolume')}</th>
+                    <th className="p-3.5">{t('appAdmin.statusCol')}</th>
+                    <th className="p-3.5 text-right">{t('appAdmin.actionsCol')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y dark:divide-white/5 divide-gray-100">
+                  {filteredUsers.map((u) => {
+                    const isActive = u.status === 'active'
+                    const isPro = u.plan === 'premium'
+                    const isUpdating = actionLoadingId === u.id
 
-                  return (
-                    <tr key={u.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition">
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold flex items-center justify-center text-xs">
-                            {u.full_name.slice(0, 2).toUpperCase()}
+                    return (
+                      <tr key={u.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition">
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold flex items-center justify-center text-xs">
+                              {u.full_name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="font-bold dark:text-white text-gray-900 block">
+                                {u.full_name}
+                              </span>
+                              <span className="text-[11px] text-gray-400">{u.email}</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-bold dark:text-white text-gray-900 block">
-                              {u.full_name}
-                            </span>
-                            <span className="text-[11px] text-gray-400">{u.email}</span>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="p-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
-                            isPro
-                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                              : 'bg-gray-500/15 text-gray-400 border-gray-500/30'
-                          }`}
-                        >
-                          {isPro ? 'PRO ⚡' : 'FREE'}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5">
-                        <span className="capitalize font-semibold dark:text-gray-300 text-gray-700">
-                          {u.role}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5">
-                        <span className="font-medium text-gray-400">{u.wallets_count} comptes</span>
-                      </td>
-
-                      <td className="p-3.5 font-bold dark:text-white text-gray-900">
-                        {formatCurrency(u.total_volume, u.currency)}
-                      </td>
-
-                      <td className="p-3.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            isActive
-                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                              : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                          }`}
-                        >
-                          {isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                          {isActive ? 'Actif' : 'Suspendu'}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePlan(u)}
-                            className="px-2 py-1 rounded-lg text-[11px] font-semibold dark:bg-gray-800 bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-200 text-gray-800 transition cursor-pointer"
-                            title="Basculer la formule de souscription"
-                          >
-                            {isPro ? 'Basculer Free' : 'Mettre en Pro'}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatus(u)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
-                              isActive
-                                ? 'text-rose-500 hover:bg-rose-500/10'
-                                : 'text-emerald-500 hover:bg-emerald-500/10'
+                        <td className="p-3.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                              isPro
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                : 'bg-gray-500/15 text-gray-400 border-gray-500/30'
                             }`}
                           >
-                            {isActive ? t('appAdmin.suspend') : t('appAdmin.activate')}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                            {isPro ? 'PRO ⚡' : 'FREE'}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="capitalize font-semibold dark:text-gray-300 text-gray-700">
+                            {u.role}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="font-medium text-gray-400">{u.wallets_count} {t('appTontines.members', { defaultValue: 'comptes' })}</span>
+                        </td>
+
+                        <td className="p-3.5 font-bold dark:text-white text-gray-900">
+                          {formatCurrency(u.total_volume, u.currency)}
+                        </td>
+
+                        <td className="p-3.5">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              isActive
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                            }`}
+                          >
+                            {isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                            {isActive ? t('appAdmin.activeStatus') : t('appAdmin.suspendedStatus')}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlan(u)}
+                              disabled={isUpdating}
+                              className="px-2 py-1 rounded-lg text-[11px] font-semibold dark:bg-gray-800 bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-200 text-gray-800 transition cursor-pointer disabled:opacity-50"
+                              title="Toggle subscription plan"
+                            >
+                              {isPro ? t('appAdmin.downgradeToFree') : t('appAdmin.upgradeToPro')}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatus(u)}
+                              disabled={isUpdating}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer disabled:opacity-50 ${
+                                isActive
+                                  ? 'text-rose-500 hover:bg-rose-500/10'
+                                  : 'text-emerald-500 hover:bg-emerald-500/10'
+                              }`}
+                            >
+                              {isActive ? t('appAdmin.suspend') : t('appAdmin.activate')}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -464,36 +589,42 @@ export const AdminView: React.FC = () => {
           <div className="flex items-center justify-between border-b dark:border-white/10 border-gray-200 pb-3">
             <div>
               <h3 className="text-sm font-bold dark:text-white text-gray-900">
-                Traçabilité des Opérations Administratives
+                {t('appAdmin.auditLog')}
               </h3>
               <p className="text-xs text-gray-400">
-                Chaque action sensible (changement de plan, suspension) est consignée dans `admin_audit_log`.
+                {t('appAdmin.auditAuditDesc')}
               </p>
             </div>
-            <span className="text-xs text-gray-400">{auditLogs.length} événements</span>
+            <span className="text-xs text-gray-400">{auditLogs.length} {t('appAdmin.eventsCount')}</span>
           </div>
 
-          <div className="divide-y dark:divide-white/5 divide-gray-100">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="py-3.5 flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                      {log.action}
-                    </span>
-                    <span className="text-xs font-bold dark:text-white text-gray-900">
-                      Cible : {log.target_user}
-                    </span>
-                    <span className="text-[11px] text-gray-400">• par {log.admin_email}</span>
+          {auditLogs.length === 0 ? (
+            <div className="py-8 text-center text-xs text-gray-400">
+              {t('appAdmin.noAuditLogs')}
+            </div>
+          ) : (
+            <div className="divide-y dark:divide-white/5 divide-gray-100">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="py-3.5 flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                        {log.action}
+                      </span>
+                      <span className="text-xs font-bold dark:text-white text-gray-900">
+                        {t('appAdmin.targetUser')} {log.target_user}
+                      </span>
+                      <span className="text-[11px] text-gray-400">• {t('appAdmin.byAdmin')} {log.admin_email}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-300">{log.details}</p>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-300">{log.details}</p>
+                  <span className="text-[11px] text-gray-400 flex-shrink-0">
+                    {formatDate(log.created_at)}
+                  </span>
                 </div>
-                <span className="text-[11px] text-gray-400 flex-shrink-0">
-                  {formatDate(log.created_at)}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

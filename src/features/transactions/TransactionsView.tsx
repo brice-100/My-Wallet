@@ -323,7 +323,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <p className="text-xs text-gray-400 max-w-sm mx-auto">
               {hasActiveFilters
                 ? t('appTransactions.noResultsHint')
-                : 'Commencez par ajouter votre première transaction.'}
+                : t('appTransactions.noResultsEmpty')}
             </p>
             {hasActiveFilters ? (
               <button
@@ -375,7 +375,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold dark:text-white text-gray-900 truncate">
-                          {tx.note || tx.category?.name || (isTransfer ? 'Transfert de fonds' : 'Opération')}
+                          {tx.note || tx.category?.name || (isTransfer ? t('appDashboard.transferLabel', { defaultValue: 'Transfert' }) : t('appDashboard.operationLabel', { defaultValue: 'Opération' }))}
                         </span>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${walletStyle.bg} ${walletStyle.border} ${walletStyle.color} flex-shrink-0`}
