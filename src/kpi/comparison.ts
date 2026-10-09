@@ -320,13 +320,13 @@ export function computeGranularComparison(
 
   // Identifier la semaine courante (si même année et même mois)
   const now = new Date()
-  let currentWeekIndex = 0
+  let currentWeekIndex: number
   if (now.getFullYear() === selectedYear && now.getMonth() === selectedMonth) {
     const currentDay = now.getDate()
-    currentWeekIndex = weekSlices.findIndex(
+    const foundIndex = weekSlices.findIndex(
       (s) => currentDay >= s.start && currentDay <= s.end
     )
-    if (currentWeekIndex === -1) currentWeekIndex = chartData.length - 1
+    currentWeekIndex = foundIndex === -1 ? chartData.length - 1 : foundIndex
   } else {
     // Si on regarde un mois passé, comparer la dernière semaine avec l'avant-dernière
     currentWeekIndex = chartData.length - 1

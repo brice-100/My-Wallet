@@ -598,8 +598,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
                     <User className="w-3.5 h-3.5" />
                   </div>
                   <div className="hidden sm:flex flex-col text-left max-w-[140px]">
-                    <span className="text-xs font-bold truncate dark:text-white text-gray-900">
+                    <span className="text-xs font-bold truncate dark:text-white text-gray-900 flex items-center gap-1.5">
                       {profile?.full_name || 'Mon Compte'}
+                      {loading && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Synchronisation en cours" />
+                      )}
                     </span>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                       {user.email}
