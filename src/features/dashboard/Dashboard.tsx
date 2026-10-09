@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import {
   Wallet,
-  Plus,
   Settings as SettingsIcon,
   LogIn,
   ShieldCheck,
   Calendar,
-  Loader2,
   ArrowLeft,
   LayoutDashboard,
   ArrowLeftRight,
   Users,
   ShieldAlert,
   LogOut,
+  User,
+  ChevronDown,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
@@ -21,7 +21,13 @@ import { transactionsApi } from '../../data/transactions'
 import { categoriesApi } from '../../data/categories'
 import { budgetsApi } from '../../data/budgets'
 import { profileApi } from '../../data/profile'
-import { computeFlows, groupByCategory, calculateDailyRemaining } from '../../kpi'
+import {
+  computeFlows,
+  groupByCategory,
+  calculateDailyRemaining,
+  computeGranularComparison,
+  type ComparisonGranularity,
+} from '../../kpi'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { LanguageSelector } from '../../components/LanguageSelector'
 import type {
@@ -85,12 +91,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
   const [period, setPeriod] = useState<'day' | 'month' | 'year'>('month')
   const [loading, setLoading] = useState(true)
 
+  // Gestion du cycle temporel et de la comparaison granulaire
+  const now = new Date()
+  const [compGranularity, setCompGranularity] = useState<ComparisonGranularity>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth())
+
   // Modals
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWalletOpen, setIsWalletOpen] = useState(false)
   const [isTxOpen, setIsTxOpen] = useState(false)
   const [isBudgetOpen, setIsBudgetOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
   useEffect(() => {
     if (authProfile) {
@@ -393,6 +406,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
   const dailyRemaining = calculateDailyRemaining(totalBalance, profile?.pay_day || 1)
   const currency: CurrencyCode = profile?.currency || 'XOF'
 
+  // Années disponibles dans l'historique des transactions
+  const availableYears = useMemo(() => {
+    const years = new Set<number>()
+    const currentYear = new Date().getFullYear()
+    years.add(currentYear)
+    years.add(currentYear - 1)
+    transactions.forEach((tx) => {
+      const y = new Date(tx.occurred_at).getFullYear()
+      if (!isNaN(y)) years.add(y)
+    })
+    return Array.from(years).sort((a, b) => b - a)
+  }, [transactions])
+
+  // Calcul dynamique de la comparaison granulaire (semaine, mois, année)
+  const comparison = useMemo(() => {
+    return computeGranularComparison(
+      transactions,
+      compGranularity,
+      selectedYear,
+      selectedMonth,
+      t('common.locale', { defaultValue: 'fr' })
+    )
+  }, [transactions, compGranularity, selectedYear, selectedMonth, t])
+
   const handleDeleteWallet = async (walletId: string) => {
     if (!window.confirm(t('common.confirmDelete', { defaultValue: 'Voulez-vous vraiment supprimer ce portefeuille ?' }))) return
     try {
@@ -536,78 +573,109 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
               <ThemeToggle />
             </div>
 
-            {/* Statut utilisateur */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full dark:bg-gray-900/80 bg-gray-100 border dark:border-white/5 border-gray-200 text-xs dark:text-gray-300 text-gray-700">
-              {loading ? (
-                <span className="flex items-center gap-1.5 text-gray-400">
-                  <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
-                  {t('common.sync', { defaultValue: 'Sync...' })}
-                </span>
-              ) : (
-                <>
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      user ? 'bg-emerald-400 shadow-[0_0_8px_#10B981]' : 'bg-amber-400 shadow-[0_0_8px_#F59E0B]'
-                    }`}
-                  />
-                  {user ? (
-                    <span className="truncate max-w-[110px]">{profile?.full_name || user.email}</span>
-                  ) : (
-                    <span className="text-amber-500 dark:text-amber-300 font-medium">{t('common.demoMode', { defaultValue: 'Mode Démo' })}</span>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Bouton Rapide Nouvelle Opération */}
-            <button
-              onClick={() => setIsTxOpen(true)}
-              className="flex items-center gap-1.5 py-2 px-2.5 sm:px-3.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-gray-950 transition active:scale-95 shadow-md shadow-emerald-900/30 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span className="hidden xs:inline">{t('appTransactions.newOperation', { defaultValue: 'Nouvelle Opération' })}</span>
-            </button>
-
             {/* Bouton Connexion si non connecté */}
             {!user && (
               <button
                 onClick={() => setIsAuthOpen(true)}
-                className="p-2 sm:p-2.5 rounded-xl dark:bg-gray-900/80 bg-gray-100 border dark:border-white/10 border-gray-200 dark:text-gray-300 text-gray-700 hover:text-emerald-500 transition cursor-pointer"
+                className="flex items-center gap-2 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-gray-950 transition active:scale-95 shadow-md shadow-emerald-900/30 cursor-pointer"
                 title={t('nav.login')}
               >
                 <LogIn className="w-4 h-4" />
+                <span>{t('nav.login', { defaultValue: 'Connexion' })}</span>
               </button>
             )}
 
-            {/* Bouton de Déconnexion visible quand l'utilisateur est connecté */}
+            {/* Menu Profil compact avec Email & Déconnexion quand l'utilisateur est connecté */}
             {user && (
-              <button
-                type="button"
-                onClick={async () => {
-                  if (
-                    window.confirm(
-                      t('common.confirmLogout', {
-                        defaultValue: 'Voulez-vous vraiment vous déconnecter de votre compte ?',
-                      })
-                    )
-                  ) {
-                    await signOut()
-                    if (onBackToLanding) {
-                      onBackToLanding()
-                    } else {
-                      window.location.hash = ''
-                    }
-                  }
-                }}
-                className="p-2 sm:p-2.5 rounded-xl dark:bg-rose-500/10 bg-rose-50 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 hover:border-rose-500/40 transition cursor-pointer flex items-center gap-1.5"
-                title={t('common.logout', { defaultValue: 'Se déconnecter' })}
-                aria-label={t('common.logout', { defaultValue: 'Se déconnecter' })}
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden lg:inline text-xs font-semibold">
-                  {t('common.logout', { defaultValue: 'Déconnexion' })}
-                </span>
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-2 py-1.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-100 hover:dark:bg-gray-800 hover:bg-gray-200/80 border dark:border-white/10 border-gray-200 transition cursor-pointer"
+                  title="Mon Profil"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-500 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="hidden sm:flex flex-col text-left max-w-[140px]">
+                    <span className="text-xs font-bold truncate dark:text-white text-gray-900">
+                      {profile?.full_name || 'Mon Compte'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                      {user.email}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${
+                      isProfileMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Dropdown Menu Profil */}
+                {isProfileMenuOpen && (
+                  <>
+                    {/* Backdrop transparent pour fermer au clic dehors */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsProfileMenuOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-64 rounded-2xl p-2 dark:bg-[#0f172a] bg-white border dark:border-white/10 border-gray-200 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                      {/* Entête du menu avec identité */}
+                      <div className="p-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/5 border-gray-100 mb-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10B981]" />
+                          <span className="text-xs font-bold dark:text-white text-gray-900 truncate">
+                            {profile?.full_name || 'Utilisateur'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate break-all">
+                          {user.email}
+                        </p>
+                      </div>
+
+                      {/* Bouton Paramètres rapide */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false)
+                          setCurrentTab('settings')
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium dark:text-gray-300 text-gray-700 hover:bg-emerald-500/10 hover:text-emerald-500 transition cursor-pointer mb-1"
+                      >
+                        <SettingsIcon className="w-4 h-4 text-emerald-500" />
+                        <span>{t('appTabs.settings', { defaultValue: 'Paramètres du compte' })}</span>
+                      </button>
+
+                      {/* Bouton Se déconnecter */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsProfileMenuOpen(false)
+                          if (
+                            window.confirm(
+                              t('common.confirmLogout', {
+                                defaultValue: 'Voulez-vous vraiment vous déconnecter de votre compte ?',
+                              })
+                            )
+                          ) {
+                            await signOut()
+                            if (onBackToLanding) {
+                              onBackToLanding()
+                            } else {
+                              window.location.hash = ''
+                            }
+                          }
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-500 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>{t('common.logout', { defaultValue: 'Se déconnecter' })}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -669,6 +737,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBackToLanding }) => {
             dailyRemaining={dailyRemaining}
             spendingCategories={spendingCategories}
             currency={currency}
+            comparison={comparison}
+            comparisonGranularity={compGranularity}
+            onComparisonGranularityChange={setCompGranularity}
+            selectedYear={selectedYear}
+            onYearChange={setSelectedYear}
+            selectedMonth={selectedMonth}
+            onMonthChange={setSelectedMonth}
+            availableYears={availableYears}
             onOpenWalletModal={() => setIsWalletOpen(true)}
             onDeleteWallet={handleDeleteWallet}
             onOpenBudgetModal={() => setIsBudgetOpen(true)}

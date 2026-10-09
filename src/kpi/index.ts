@@ -112,3 +112,5 @@ export function calculateDailyRemaining(
 
   return { dailyRemaining, daysRemaining }
 }
+
+export * from './comparison'

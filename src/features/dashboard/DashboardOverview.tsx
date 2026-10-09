@@ -34,6 +34,12 @@ import type {
   MonthlyFlowView,
 } from '../../types/database'
 
+import { PeriodComparisonCard } from './PeriodComparisonCard'
+import type {
+  ComparisonGranularity,
+  GranularComparisonResult,
+} from '../../kpi/comparison'
+
 const PIE_COLORS = [
   '#10B981', // Émeraude
   '#06B6D4', // Cyan
@@ -57,6 +63,15 @@ interface DashboardOverviewProps {
   dailyRemaining: { dailyRemaining: number; daysRemaining: number }
   spendingCategories: Array<{ categoryId: string; name: string; total: number; percentage: number }>
   currency: any
+  // Props de comparaison temporelle granulaire (semaine / mois / année)
+  comparison: GranularComparisonResult
+  comparisonGranularity: ComparisonGranularity
+  onComparisonGranularityChange: (g: ComparisonGranularity) => void
+  selectedYear: number
+  onYearChange: (y: number) => void
+  selectedMonth: number
+  onMonthChange: (m: number) => void
+  availableYears: number[]
   onOpenWalletModal: () => void
   onDeleteWallet?: (walletId: string) => void
   onOpenBudgetModal: () => void
@@ -75,6 +90,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   dailyRemaining,
   spendingCategories,
   currency,
+  comparison,
+  comparisonGranularity,
+  onComparisonGranularityChange,
+  selectedYear,
+  onYearChange,
+  selectedMonth,
+  onMonthChange,
+  availableYears,
   onOpenWalletModal,
   onDeleteWallet,
   onOpenBudgetModal,
@@ -250,6 +273,21 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             })}
           </div>
         )}
+      </section>
+
+      {/* 2bis. Analyse Comparative des Flux (Semaine / Mois / Année) */}
+      <section>
+        <PeriodComparisonCard
+          comparison={comparison}
+          granularity={comparisonGranularity}
+          onGranularityChange={onComparisonGranularityChange}
+          selectedYear={selectedYear}
+          onYearChange={onYearChange}
+          selectedMonth={selectedMonth}
+          onMonthChange={onMonthChange}
+          availableYears={availableYears}
+          currency={currency}
+        />
       </section>
 
       {/* 3. Graphiques : Donut des Dépenses & Histogramme Mensuel */}
