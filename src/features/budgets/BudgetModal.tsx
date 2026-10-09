@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { budgetsApi } from '../../data/budgets'
 import type { Category } from '../../types/database'
-import { PiggyBank, X, Loader2 } from 'lucide-react'
+import { PiggyBank, X, Loader2, AlertCircle } from 'lucide-react'
+import { validateAmount } from '../../lib/validation'
 
 interface BudgetModalProps {
   isOpen: boolean
@@ -23,20 +24,33 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   if (!isOpen) return null
 
+  const validateField = (val: string) => {
+    const res = validateAmount(val, 100, 'plafond budgétaire')
+    setFieldErrors((prev) => {
+      const copy = { ...prev }
+      if (!res.isValid) copy.amount = res.error!
+      else delete copy.amount
+      return copy
+    })
+    return res.isValid
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setErrorMsg(null)
+    setTouched({ amount: true })
 
-    const parsedAmount = parseFloat(amount)
-    if (!parsedAmount || parsedAmount <= 0) {
-      setErrorMsg(t('modals.tx.validAmount', { defaultValue: 'Veuillez renseigner un montant valide supérieur à 0.' }))
-      setLoading(false)
+    if (!validateField(amount)) {
       return
     }
+
+    setLoading(true)
+    const parsedAmount = parseFloat(amount.trim().replace(',', '.'))
 
     try {
       await budgetsApi.upsert({
@@ -47,6 +61,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
       onSuccess()
       onClose()
       setAmount('')
+      setFieldErrors({})
     } catch (err: any) {
       setErrorMsg(err.message || t('common.errorOccurred', { defaultValue: 'Erreur lors de la mise à jour du budget.' }))
     } finally {
@@ -77,12 +92,13 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
         </p>
 
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm">
-            {errorMsg}
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
             <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
               {t('modals.budget.category', { defaultValue: 'Catégorie à Plafonner' })}
@@ -102,17 +118,32 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
 
           <div>
             <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-              {t('modals.budget.monthlyLimit', { defaultValue: 'Plafond Mensuel Maximal' })}
+              {t('modals.budget.monthlyLimit', { defaultValue: 'Plafond Mensuel Maximal' })} <span className="text-rose-500">*</span>
             </label>
             <input
-              type="number"
-              required
-              min="100"
+              type="text"
+              inputMode="decimal"
               placeholder="Ex: 50000"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full text-xl font-extrabold py-2.5 px-4 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+              onChange={(e) => {
+                setAmount(e.target.value)
+                if (touched.amount) validateField(e.target.value)
+              }}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, amount: true }))
+                validateField(amount)
+              }}
+              className={`w-full text-xl font-extrabold py-2.5 px-4 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none ${
+                fieldErrors.amount
+                  ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                  : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+              }`}
             />
+            {fieldErrors.amount && (
+              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.amount}
+              </p>
+            )}
           </div>
 
           <button

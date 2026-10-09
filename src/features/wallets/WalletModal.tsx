@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { walletsApi } from '../../data/wallets'
 import type { WalletType } from '../../types/database'
-import { Wallet, X, Loader2 } from 'lucide-react'
+import { Wallet, X, Loader2, AlertCircle } from 'lucide-react'
+import { AMOUNT_REGEX } from '../../lib/validation'
 
 interface WalletModalProps {
   isOpen: boolean
@@ -18,6 +19,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, onCre
   const [initialBalance, setInitialBalance] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   if (!isOpen) return null
 
@@ -27,22 +30,98 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, onCre
     bank: ['Ecobank', 'SGBC / Société Générale', 'UBA', 'BOA', 'Coris Bank', 'Autre Banque'],
   }
 
+  const validateField = (field: string, val: string) => {
+    let err: string | undefined
+
+    if (field === 'name') {
+      const trimmed = val.trim()
+      if (!trimmed && !provider) {
+        err = 'Veuillez renseigner un nom pour ce portefeuille.'
+      } else if (trimmed && trimmed.length < 2) {
+        err = 'Le nom doit comporter au moins 2 caractères.'
+      }
+    } else if (field === 'initialBalance') {
+      const trimmed = val.trim().replace(',', '.')
+      if (trimmed !== '') {
+        if (!AMOUNT_REGEX.test(trimmed)) {
+          err = 'Le solde initial doit être un nombre positif (ex: 50000).'
+        } else {
+          const num = parseFloat(trimmed)
+          if (isNaN(num) || num < 0) {
+            err = 'Le solde initial ne peut pas être négatif.'
+          }
+        }
+      }
+    }
+
+    setFieldErrors((prev) => {
+      const copy = { ...prev }
+      if (err) copy[field] = err
+      else delete copy[field]
+      return copy
+    })
+
+    return !err
+  }
+
+  const handleBlur = (field: string, val: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }))
+    validateField(field, val)
+  }
+
+  const validateAll = () => {
+    const errors: Record<string, string> = {}
+    const trimmedName = name.trim()
+
+    if (!trimmedName && !provider) {
+      errors.name = 'Veuillez renseigner un nom pour ce portefeuille.'
+    } else if (trimmedName && trimmedName.length < 2) {
+      errors.name = 'Le nom doit comporter au moins 2 caractères.'
+    }
+
+    const trimmedBalance = initialBalance.trim().replace(',', '.')
+    if (trimmedBalance !== '') {
+      if (!AMOUNT_REGEX.test(trimmedBalance)) {
+        errors.initialBalance = 'Le solde initial doit être un nombre positif (ex: 50000).'
+      } else {
+        const num = parseFloat(trimmedBalance)
+        if (isNaN(num) || num < 0) {
+          errors.initialBalance = 'Le solde initial ne peut pas être négatif.'
+        }
+      }
+    }
+
+    setFieldErrors(errors)
+    setTouched({ name: true, initialBalance: true })
+    return Object.keys(errors).length === 0
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setErrorMsg(null)
 
+    if (!validateAll()) {
+      return
+    }
+
+    setLoading(true)
+
     try {
+      const parsedBalance = initialBalance.trim()
+        ? parseFloat(initialBalance.trim().replace(',', '.'))
+        : undefined
+
       await walletsApi.create({
         name: name.trim() || provider,
         type,
         provider: type === 'cash' ? undefined : provider,
-        initialBalance: initialBalance ? parseFloat(initialBalance) : undefined,
+        initialBalance: parsedBalance,
       })
       onCreated()
       onClose()
       setName('')
       setInitialBalance('')
+      setFieldErrors({})
     } catch (err: any) {
       setErrorMsg(err.message || t('common.errorOccurred', { defaultValue: 'Erreur lors de la création du portefeuille' }))
     } finally {
@@ -73,12 +152,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, onCre
         </p>
 
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm">
-            {errorMsg}
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
             <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-2">
               {t('modals.wallet.walletType', { defaultValue: 'Type de Portefeuille' })}
@@ -154,12 +234,24 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, onCre
             </label>
             <input
               type="text"
-              required
               placeholder={provider || t('modals.wallet.accountNamePlaceholder', { defaultValue: 'Nom du portefeuille' })}
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-emerald-500"
+              onChange={(e) => {
+                setName(e.target.value)
+                if (touched.name) validateField('name', e.target.value)
+              }}
+              onBlur={() => handleBlur('name', name)}
+              className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 text-sm focus:outline-none ${
+                fieldErrors.name
+                  ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                  : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+              }`}
             />
+            {fieldErrors.name && (
+              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.name}
+              </p>
+            )}
           </div>
 
           <div>
@@ -167,13 +259,26 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, onCre
               {t('modals.wallet.initialBalance', { defaultValue: 'Solde initial' })}
             </label>
             <input
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               placeholder="0"
               value={initialBalance}
-              onChange={(e) => setInitialBalance(e.target.value)}
-              className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-emerald-500"
+              onChange={(e) => {
+                setInitialBalance(e.target.value)
+                if (touched.initialBalance) validateField('initialBalance', e.target.value)
+              }}
+              onBlur={() => handleBlur('initialBalance', initialBalance)}
+              className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 text-sm focus:outline-none ${
+                fieldErrors.initialBalance
+                  ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                  : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+              }`}
             />
+            {fieldErrors.initialBalance && (
+              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.initialBalance}
+              </p>
+            )}
           </div>
 
           <button

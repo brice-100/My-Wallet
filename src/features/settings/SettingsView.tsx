@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Trash2,
   ShieldAlert,
+  AlertCircle,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { profileApi } from '../../data/profile'
@@ -83,6 +84,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [payDay, setPayDay] = useState(profile?.pay_day || 1)
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState(false)
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({})
+  const [profileTouched, setProfileTouched] = useState<Record<string, boolean>>({})
 
   // Subscription state
   const [currentPlan, setCurrentPlan] = useState<UserPlan>(profile?.plan || 'free')
@@ -93,10 +96,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newCatType, setNewCatType] = useState<'expense' | 'income'>('expense')
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all')
   const [creatingCat, setCreatingCat] = useState(false)
+  const [catError, setCatError] = useState<string | null>(null)
+
+  // Validation profil
+  const validateProfileField = (field: string, val: any) => {
+    let err: string | undefined
+    if (field === 'fullName') {
+      const trimmed = String(val).trim()
+      if (trimmed && trimmed.length < 2) {
+        err = 'Le nom doit comporter au moins 2 caractères.'
+      }
+    } else if (field === 'payDay') {
+      const num = Number(val)
+      if (isNaN(num) || num < 1 || num > 31) {
+        err = 'Le jour de paie doit être un nombre compris entre 1 et 31.'
+      }
+    }
+
+    setProfileErrors((prev) => {
+      const copy = { ...prev }
+      if (err) copy[field] = err
+      else delete copy[field]
+      return copy
+    })
+    return !err
+  }
 
   // Sauvegarder Profil
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
+    setProfileTouched({ fullName: true, payDay: true })
+
+    const errors: Record<string, string> = {}
+    if (fullName.trim() && fullName.trim().length < 2) {
+      errors.fullName = 'Le nom doit comporter au moins 2 caractères.'
+    }
+    const dayNum = Number(payDay)
+    if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) {
+      errors.payDay = 'Le jour de paie doit être un nombre compris entre 1 et 31.'
+    }
+
+    setProfileErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
     setSavingProfile(true)
     setProfileSuccess(false)
 
@@ -105,7 +147,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         await profileApi.updateProfile({
           fullName: fullName.trim() || undefined,
           currency: selectedCurrency,
-          payDay: Number(payDay),
+          payDay: dayNum,
         })
       }
       if (onCurrencyChange) onCurrencyChange(selectedCurrency)
@@ -113,7 +155,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setProfileSuccess(true)
       setTimeout(() => setProfileSuccess(false), 2500)
     } catch (err: any) {
-      alert(err.message || 'Erreur lors de la mise à jour du profil')
+      setProfileErrors({ global: err.message || 'Erreur lors de la mise à jour du profil' })
     } finally {
       setSavingProfile(false)
     }
@@ -129,13 +171,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Créer une catégorie
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newCatName.trim()) return
+    setCatError(null)
+
+    const trimmed = newCatName.trim()
+    if (!trimmed) {
+      setCatError('Veuillez renseigner un nom pour la catégorie.')
+      return
+    }
+    if (trimmed.length < 2) {
+      setCatError('Le nom de la catégorie doit comporter au moins 2 caractères.')
+      return
+    }
 
     setCreatingCat(true)
     try {
       if (user) {
         const cat = await categoriesApi.create({
-          name: newCatName.trim(),
+          name: trimmed,
           type: newCatType,
         })
         if (onCategoryAdded) onCategoryAdded(cat)
@@ -143,7 +195,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         const mockCat: Category = {
           id: `cat-${Date.now()}`,
           user_id: 'demo',
-          name: newCatName.trim(),
+          name: trimmed,
           type: newCatType,
           icon: null,
           parent_id: null,
@@ -154,8 +206,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (onCategoryAdded) onCategoryAdded(mockCat)
       }
       setNewCatName('')
+      setCatError(null)
     } catch (err: any) {
-      alert(err.message || 'Erreur lors de la création de la catégorie')
+      setCatError(err.message || 'Erreur lors de la création de la catégorie')
     } finally {
       setCreatingCat(false)
     }
@@ -291,7 +344,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
           </div>
 
-          <form onSubmit={handleSaveProfile} className="space-y-4 max-w-lg">
+          {profileErrors.global && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{profileErrors.global}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveProfile} noValidate className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
                 {t('appSettings.fullName')}
@@ -299,10 +359,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <input
                 type="text"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => {
+                  setFullName(e.target.value)
+                  if (profileTouched.fullName) validateProfileField('fullName', e.target.value)
+                }}
+                onBlur={() => {
+                  setProfileTouched((prev) => ({ ...prev, fullName: true }))
+                  validateProfileField('fullName', fullName)
+                }}
                 placeholder="ex: Mamadou Kouassi"
-                className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-sm focus:outline-none focus:border-emerald-500"
+                className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white text-sm focus:outline-none ${
+                  profileErrors.fullName
+                    ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                    : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                }`}
               />
+              {profileErrors.fullName && (
+                <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" /> {profileErrors.fullName}
+                </p>
+              )}
             </div>
 
             <div>
@@ -327,9 +403,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   min="1"
                   max="31"
                   value={payDay}
-                  onChange={(e) => setPayDay(Number(e.target.value))}
-                  className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-sm focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => {
+                    setPayDay(Number(e.target.value))
+                    if (profileTouched.payDay) validateProfileField('payDay', e.target.value)
+                  }}
+                  onBlur={() => {
+                    setProfileTouched((prev) => ({ ...prev, payDay: true }))
+                    validateProfileField('payDay', payDay)
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white text-sm focus:outline-none ${
+                    profileErrors.payDay
+                      ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                      : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                  }`}
                 />
+                {profileErrors.payDay && (
+                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {profileErrors.payDay}
+                  </p>
+                )}
                 <p className="text-[10px] text-gray-400 mt-1">
                   {t('appSettings.payDayHelp')}
                 </p>
@@ -452,32 +544,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           {/* Formulaire ajout catégorie */}
-          <form onSubmit={handleCreateCategory} className="flex gap-2 flex-wrap items-center">
-            <input
-              type="text"
-              required
-              placeholder={t('appSettings.newCategory') + ' (ex: Frais Mobile Money...)'}
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              className="flex-1 min-w-[200px] py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
-            />
-            <select
-              value={newCatType}
-              onChange={(e) => setNewCatType(e.target.value as any)}
-              className="py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white cursor-pointer"
-            >
-              <option value="expense">{t('modals.tx.expense', { defaultValue: 'Dépense' })}</option>
-              <option value="income">{t('modals.tx.income', { defaultValue: 'Revenu' })}</option>
-            </select>
-            <button
-              type="submit"
-              disabled={creatingCat}
-              className="py-2 px-4 rounded-xl text-xs font-bold text-gray-950 bg-emerald-400 hover:bg-emerald-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>{t('appSettings.addCategoryBtn')}</span>
-            </button>
-          </form>
+          <div>
+            <form onSubmit={handleCreateCategory} noValidate className="flex gap-2 flex-wrap items-center">
+              <input
+                type="text"
+                placeholder={t('appSettings.newCategory') + ' (ex: Frais Mobile Money...)'}
+                value={newCatName}
+                onChange={(e) => {
+                  setNewCatName(e.target.value)
+                  if (catError) setCatError(null)
+                }}
+                className={`flex-1 min-w-[200px] py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                  catError
+                    ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                    : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                }`}
+              />
+              <select
+                value={newCatType}
+                onChange={(e) => setNewCatType(e.target.value as any)}
+                className="py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white cursor-pointer"
+              >
+                <option value="expense">{t('modals.tx.expense', { defaultValue: 'Dépense' })}</option>
+                <option value="income">{t('modals.tx.income', { defaultValue: 'Revenu' })}</option>
+              </select>
+              <button
+                type="submit"
+                disabled={creatingCat}
+                className="py-2 px-4 rounded-xl text-xs font-bold text-gray-950 bg-emerald-400 hover:bg-emerald-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{t('appSettings.addCategoryBtn')}</span>
+              </button>
+            </form>
+            {catError && (
+              <p className="text-[11px] text-rose-500 mt-1.5 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3 h-3 flex-shrink-0" /> {catError}
+              </p>
+            )}
+          </div>
 
           {/* Grille des catégories */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">

@@ -4,7 +4,8 @@ import { transactionsApi } from '../../data/transactions'
 import { offlineStorage } from '../../lib/offlineStorage'
 import { useNetwork } from '../../context/NetworkContext'
 import type { Category, TransactionType, WalletBalanceView } from '../../types/database'
-import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, X, Loader2 } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, X, Loader2, AlertCircle } from 'lucide-react'
+import { validateAmount } from '../../lib/validation'
 
 interface TransactionModalProps {
   isOpen: boolean
@@ -31,6 +32,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   React.useEffect(() => {
     if (wallets.length > 0) {
@@ -49,17 +52,81 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     mode === 'expense' ? c.type === 'expense' : c.type === 'income'
   )
 
+  const validateField = (field: string, val: string) => {
+    let err: string | undefined
+
+    if (field === 'amount') {
+      const res = validateAmount(val, 1, 'montant')
+      if (!res.isValid) err = res.error
+    } else if (field === 'targetWalletId' && mode === 'transfer') {
+      if (!val) {
+        err = 'Veuillez sélectionner un compte destinataire.'
+      } else if (val === walletId) {
+        err = 'Le compte de destination doit être différent du compte source.'
+      }
+    } else if (field === 'walletId') {
+      if (!val) err = 'Veuillez sélectionner un portefeuille.'
+      if (mode === 'transfer' && val === targetWalletId) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          targetWalletId: 'Le compte de destination doit être différent du compte source.',
+        }))
+      }
+    }
+
+    setFieldErrors((prev) => {
+      const copy = { ...prev }
+      if (err) copy[field] = err
+      else delete copy[field]
+      return copy
+    })
+
+    return !err
+  }
+
+  const handleBlur = (field: string, val: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }))
+    validateField(field, val)
+  }
+
+  const validateAll = () => {
+    const errors: Record<string, string> = {}
+    
+    const amountRes = validateAmount(amount, 1, 'montant')
+    if (!amountRes.isValid) errors.amount = amountRes.error!
+
+    if (!walletId) {
+      errors.walletId = 'Veuillez sélectionner un portefeuille.'
+    }
+
+    if (mode === 'transfer') {
+      if (!targetWalletId) {
+        errors.targetWalletId = 'Veuillez sélectionner un compte destinataire.'
+      } else if (targetWalletId === walletId) {
+        errors.targetWalletId = 'Le compte de destination doit être différent du compte source.'
+      }
+    }
+
+    setFieldErrors(errors)
+    setTouched({
+      amount: true,
+      walletId: true,
+      targetWalletId: true,
+    })
+
+    return Object.keys(errors).length === 0
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setErrorMsg(null)
 
-    const parsedAmount = parseFloat(amount)
-    if (!parsedAmount || parsedAmount <= 0) {
-      setErrorMsg(t('modals.tx.validAmount', { defaultValue: 'Veuillez renseigner un montant valide supérieur à 0.' }))
-      setLoading(false)
+    if (!validateAll()) {
       return
     }
+
+    setLoading(true)
+    const parsedAmount = parseFloat(amount.replace(',', '.'))
 
     try {
       if (!isOnline) {
@@ -77,12 +144,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         })
       } else {
         if (mode === 'transfer') {
-          if (!walletId || !targetWalletId) {
-            throw new Error(t('modals.tx.selectWallets', { defaultValue: 'Veuillez sélectionner les portefeuilles source et cible.' }))
-          }
-          if (walletId === targetWalletId) {
-            throw new Error(t('modals.tx.distinctWallets', { defaultValue: 'Le portefeuille de destination doit être différent du portefeuille source.' }))
-          }
           await transactionsApi.createTransfer({
             fromWalletId: walletId,
             toWalletId: targetWalletId,
@@ -90,9 +151,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             note: note.trim() || undefined,
           })
         } else {
-          if (!walletId) {
-            throw new Error(t('modals.tx.selectOneWallet', { defaultValue: 'Veuillez sélectionner un portefeuille.' }))
-          }
           try {
             await transactionsApi.create({
               walletId,
@@ -102,7 +160,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               note: note.trim() || undefined,
             })
           } catch (apiErr) {
-            // Si l'appel réseau échoue (coupure soudaine), basculer en sauvegarde locale
             console.warn('[TransactionModal] Réseau indisponible, mise en file d attente offline:', apiErr)
             await offlineStorage.enqueueAction('CREATE_TRANSACTION', {
               id: `local_tx_${Date.now()}`,
@@ -123,6 +180,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       onClose()
       setAmount('')
       setNote('')
+      setFieldErrors({})
     } catch (err: any) {
       setErrorMsg(err.message || t('common.errorOccurred', { defaultValue: "Erreur lors de l'enregistrement de l'opération" }))
     } finally {
@@ -148,8 +206,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         </p>
 
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm">
-            {errorMsg}
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-xs sm:text-sm flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
@@ -157,7 +216,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         <div className="grid grid-cols-3 gap-2 p-1 dark:bg-gray-900/60 bg-gray-100 rounded-xl mb-5 border dark:border-white/5 border-gray-200">
           <button
             type="button"
-            onClick={() => setMode('expense')}
+            onClick={() => {
+              setMode('expense')
+              setFieldErrors({})
+            }}
             className={`py-2 px-1 sm:px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               mode === 'expense'
                 ? 'bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/40 shadow-sm'
@@ -169,7 +231,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMode('income')}
+            onClick={() => {
+              setMode('income')
+              setFieldErrors({})
+            }}
             className={`py-2 px-1 sm:px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               mode === 'income'
                 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 shadow-sm'
@@ -181,7 +246,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMode('transfer')}
+            onClick={() => {
+              setMode('transfer')
+              setFieldErrors({})
+            }}
             className={`py-2 px-1 sm:px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               mode === 'transfer'
                 ? 'bg-sky-500/20 text-sky-500 dark:text-sky-400 border border-sky-500/40 shadow-sm'
@@ -193,21 +261,33 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
             <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-              {t('modals.tx.amount', { defaultValue: 'Montant' })}
+              {t('modals.tx.amount', { defaultValue: 'Montant' })} <span className="text-rose-500">*</span>
             </label>
             <input
-              type="number"
-              required
-              min="1"
+              type="text"
+              inputMode="decimal"
               placeholder="Ex: 5000"
               autoFocus
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full text-2xl font-extrabold py-2.5 px-4 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+              onChange={(e) => {
+                setAmount(e.target.value)
+                if (touched.amount) validateField('amount', e.target.value)
+              }}
+              onBlur={() => handleBlur('amount', amount)}
+              className={`w-full text-2xl font-extrabold py-2.5 px-4 rounded-xl dark:bg-gray-900/60 bg-gray-50 border transition dark:text-white text-gray-900 placeholder-gray-400 focus:outline-none ${
+                fieldErrors.amount
+                  ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                  : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+              }`}
             />
+            {fieldErrors.amount && (
+              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.amount}
+              </p>
+            )}
           </div>
 
           {/* Transfert: Source & Cible */}
@@ -215,12 +295,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  {t('modals.tx.sourceWallet', { defaultValue: 'Depuis le compte' })}
+                  {t('modals.tx.sourceWallet', { defaultValue: 'Depuis le compte' })} <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={walletId}
-                  onChange={(e) => setWalletId(e.target.value)}
-                  className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 text-sm focus:outline-none focus:border-sky-500"
+                  onChange={(e) => {
+                    setWalletId(e.target.value)
+                    if (touched.walletId) validateField('walletId', e.target.value)
+                  }}
+                  onBlur={() => handleBlur('walletId', walletId)}
+                  className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:text-white text-gray-900 text-sm focus:outline-none ${
+                    fieldErrors.walletId
+                      ? 'border-rose-500'
+                      : 'dark:border-white/10 border-gray-200 focus:border-sky-500'
+                  }`}
                 >
                   {wallets.map((w) => (
                     <option key={w.wallet_id} value={w.wallet_id} className="dark:bg-gray-900 bg-white">
@@ -228,15 +316,28 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     </option>
                   ))}
                 </select>
+                {fieldErrors.walletId && (
+                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.walletId}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  {t('modals.tx.targetWallet', { defaultValue: 'Vers le compte' })}
+                  {t('modals.tx.targetWallet', { defaultValue: 'Vers le compte' })} <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={targetWalletId}
-                  onChange={(e) => setTargetWalletId(e.target.value)}
-                  className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 text-sm focus:outline-none focus:border-sky-500"
+                  onChange={(e) => {
+                    setTargetWalletId(e.target.value)
+                    if (touched.targetWalletId) validateField('targetWalletId', e.target.value)
+                  }}
+                  onBlur={() => handleBlur('targetWalletId', targetWalletId)}
+                  className={`w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:text-white text-gray-900 text-sm focus:outline-none ${
+                    fieldErrors.targetWalletId
+                      ? 'border-rose-500'
+                      : 'dark:border-white/10 border-gray-200 focus:border-sky-500'
+                  }`}
                 >
                   {wallets.map((w) => (
                     <option key={w.wallet_id} value={w.wallet_id} className="dark:bg-gray-900 bg-white">
@@ -244,17 +345,26 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     </option>
                   ))}
                 </select>
+                {fieldErrors.targetWalletId && (
+                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {fieldErrors.targetWalletId}
+                  </p>
+                )}
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  {t('modals.tx.sourceWallet', { defaultValue: 'Portefeuille' })}
+                  {t('modals.tx.sourceWallet', { defaultValue: 'Portefeuille' })} <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={walletId}
-                  onChange={(e) => setWalletId(e.target.value)}
+                  onChange={(e) => {
+                    setWalletId(e.target.value)
+                    if (touched.walletId) validateField('walletId', e.target.value)
+                  }}
+                  onBlur={() => handleBlur('walletId', walletId)}
                   className="w-full py-2.5 px-3 rounded-xl dark:bg-gray-900/60 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 text-sm focus:outline-none focus:border-emerald-500"
                 >
                   {wallets.map((w) => (

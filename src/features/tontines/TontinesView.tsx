@@ -10,11 +10,13 @@ import {
   X,
   Check,
   Trash2,
+  AlertCircle,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrency, formatDate } from '../../lib/formatters'
 import { tontinesAndDebtsApi } from '../../data/tontinesAndDebts'
 import type { Tontine, Debt, WalletBalanceView } from '../../types/database'
+import { validateAmount, validateText } from '../../lib/validation'
 
 interface TontinesViewProps {
   user: any
@@ -59,6 +61,8 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
   const [tFreq, setTFreq] = useState<'monthly' | 'weekly' | 'biweekly'>('monthly')
   const [tTurnMonth, setTTurnMonth] = useState('')
   const [tWalletId, setTWalletId] = useState(wallets[0]?.wallet_id || '')
+  const [tFieldErrors, setTFieldErrors] = useState<Record<string, string>>({})
+  const [tTouched, setTTouched] = useState<Record<string, boolean>>({})
 
   // Form states - Debt
   const [dType, setDType] = useState<'lent' | 'borrowed'>('lent')
@@ -67,6 +71,8 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
   const [dDueDate, setDDueDate] = useState('')
   const [dNote, setDNote] = useState('')
   const [dWalletId, setDWalletId] = useState(wallets[0]?.wallet_id || '')
+  const [dFieldErrors, setDFieldErrors] = useState<Record<string, string>>({})
+  const [dTouched, setDTouched] = useState<Record<string, boolean>>({})
 
   // Filtre pour dettes
   const [debtFilter, setDebtFilter] = useState<'all' | 'lent' | 'borrowed'>('all')
@@ -95,13 +101,53 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
     }
   }, [tontines, debts])
 
+  // Validation Tontine
+  const validateTontineField = (field: string, val: string) => {
+    let err: string | undefined
+    if (field === 'tName') {
+      const res = validateText(val, 3, 'Le nom de la tontine')
+      if (!res.isValid) err = res.error
+    } else if (field === 'tAmount') {
+      const res = validateAmount(val, 500, 'montant de cotisation')
+      if (!res.isValid) err = res.error
+    } else if (field === 'tMembers') {
+      const num = parseInt(val, 10)
+      if (isNaN(num) || num < 2 || num > 100) {
+        err = 'Le nombre de membres doit être compris entre 2 et 100.'
+      }
+    }
+
+    setTFieldErrors((prev) => {
+      const copy = { ...prev }
+      if (err) copy[field] = err
+      else delete copy[field]
+      return copy
+    })
+    return !err
+  }
+
   // Actions Tontine
   const handleCreateTontine = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!tName.trim() || !tAmount) return
+    setTTouched({ tName: true, tAmount: true, tMembers: true })
 
-    const amount = Number(tAmount)
-    const members = Number(tMembers) || 10
+    const errors: Record<string, string> = {}
+    const nameRes = validateText(tName, 3, 'Le nom de la tontine')
+    if (!nameRes.isValid) errors.tName = nameRes.error!
+
+    const amountRes = validateAmount(tAmount, 500, 'montant de cotisation')
+    if (!amountRes.isValid) errors.tAmount = amountRes.error!
+
+    const membersNum = parseInt(tMembers, 10)
+    if (isNaN(membersNum) || membersNum < 2 || membersNum > 100) {
+      errors.tMembers = 'Le nombre de membres doit être compris entre 2 et 100.'
+    }
+
+    setTFieldErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
+    const amount = Number(tAmount.replace(',', '.'))
+    const members = membersNum || 10
     const pool = amount * members
 
     const newT = tontinesAndDebtsApi.addTontine(user?.id || null, {
@@ -123,6 +169,8 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
     setTName('')
     setTAmount('')
     setTTurnMonth('')
+    setTFieldErrors({})
+    setTTouched({})
   }
 
   const handleContribute = (tontine: Tontine) => {
@@ -150,16 +198,46 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
     setTontines(tontines.filter((t) => t.id !== id))
   }
 
+  // Validation Dette
+  const validateDebtField = (field: string, val: string) => {
+    let err: string | undefined
+    if (field === 'dPerson') {
+      const res = validateText(val, 2, 'Le nom du contact')
+      if (!res.isValid) err = res.error
+    } else if (field === 'dAmount') {
+      const res = validateAmount(val, 100, 'montant du prêt / dette')
+      if (!res.isValid) err = res.error
+    }
+
+    setDFieldErrors((prev) => {
+      const copy = { ...prev }
+      if (err) copy[field] = err
+      else delete copy[field]
+      return copy
+    })
+    return !err
+  }
+
   // Actions Dettes
   const handleCreateDebt = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!dPerson.trim() || !dAmount) return
+    setDTouched({ dPerson: true, dAmount: true })
+
+    const errors: Record<string, string> = {}
+    const personRes = validateText(dPerson, 2, 'Le nom du contact')
+    if (!personRes.isValid) errors.dPerson = personRes.error!
+
+    const amountRes = validateAmount(dAmount, 100, 'montant du prêt / dette')
+    if (!amountRes.isValid) errors.dAmount = amountRes.error!
+
+    setDFieldErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
     const newD = tontinesAndDebtsApi.addDebt(user?.id || null, {
       user_id: user?.id || 'demo',
       type: dType,
       person_name: dPerson.trim(),
-      amount: Number(dAmount),
+      amount: Number(dAmount.replace(',', '.')),
       paid_amount: 0,
       due_date: dDueDate || null,
       note: dNote.trim() || null,
@@ -173,6 +251,8 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
     setDAmount('')
     setDDueDate('')
     setDNote('')
+    setDFieldErrors({})
+    setDTouched({})
   }
 
   const handleSettleDebt = (debt: Debt) => {
@@ -659,49 +739,94 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               {t('appTontines.tontineModalSubtitle')}
             </p>
 
-            <form onSubmit={handleCreateTontine} className="space-y-3">
+            <form onSubmit={handleCreateTontine} noValidate className="space-y-3">
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  {t('appTontines.tontineName')}
+                  {t('appTontines.tontineName')} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder={t('appTontines.tontineNamePlaceholder')}
                   value={tName}
-                  onChange={(e) => setTName(e.target.value)}
-                  className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
+                  onChange={(e) => {
+                    setTName(e.target.value)
+                    if (tTouched.tName) validateTontineField('tName', e.target.value)
+                  }}
+                  onBlur={() => {
+                    setTTouched((prev) => ({ ...prev, tName: true }))
+                    validateTontineField('tName', tName)
+                  }}
+                  className={`w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                    tFieldErrors.tName
+                      ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                      : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                  }`}
                 />
+                {tFieldErrors.tName && (
+                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {tFieldErrors.tName}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    {t('appTontines.contributionAmount')}
+                    {t('appTontines.contributionAmount')} <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    required
-                    min="1000"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="ex: 50000"
                     value={tAmount}
-                    onChange={(e) => setTAmount(e.target.value)}
-                    className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
+                    onChange={(e) => {
+                      setTAmount(e.target.value)
+                      if (tTouched.tAmount) validateTontineField('tAmount', e.target.value)
+                    }}
+                    onBlur={() => {
+                      setTTouched((prev) => ({ ...prev, tAmount: true }))
+                      validateTontineField('tAmount', tAmount)
+                    }}
+                    className={`w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                      tFieldErrors.tAmount
+                        ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                        : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                    }`}
                   />
+                  {tFieldErrors.tAmount && (
+                    <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" /> {tFieldErrors.tAmount}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    {t('appTontines.membersCount')}
+                    {t('appTontines.membersCount')} <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
-                    required
                     min="2"
-                    max="50"
+                    max="100"
                     value={tMembers}
-                    onChange={(e) => setTMembers(e.target.value)}
-                    className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
+                    onChange={(e) => {
+                      setTMembers(e.target.value)
+                      if (tTouched.tMembers) validateTontineField('tMembers', e.target.value)
+                    }}
+                    onBlur={() => {
+                      setTTouched((prev) => ({ ...prev, tMembers: true }))
+                      validateTontineField('tMembers', tMembers)
+                    }}
+                    className={`w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                      tFieldErrors.tMembers
+                        ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                        : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                    }`}
                   />
+                  {tFieldErrors.tMembers && (
+                    <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" /> {tFieldErrors.tMembers}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -779,7 +904,7 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
               {t('appTontines.debtModalSubtitle')}
             </p>
 
-            <form onSubmit={handleCreateDebt} className="space-y-3">
+            <form onSubmit={handleCreateDebt} noValidate className="space-y-3">
               {/* Type */}
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -808,32 +933,62 @@ export const TontinesView: React.FC<TontinesViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                  {t('appTontines.contactName')}
+                  {t('appTontines.contactName')} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder={t('appTontines.contactPlaceholder')}
                   value={dPerson}
-                  onChange={(e) => setDPerson(e.target.value)}
-                  className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
+                  onChange={(e) => {
+                    setDPerson(e.target.value)
+                    if (dTouched.dPerson) validateDebtField('dPerson', e.target.value)
+                  }}
+                  onBlur={() => {
+                    setDTouched((prev) => ({ ...prev, dPerson: true }))
+                    validateDebtField('dPerson', dPerson)
+                  }}
+                  className={`w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                    dFieldErrors.dPerson
+                      ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                      : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                  }`}
                 />
+                {dFieldErrors.dPerson && (
+                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {dFieldErrors.dPerson}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
-                    {t('appTontines.amountLabel')}
+                    {t('appTontines.amountLabel')} <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    required
-                    min="500"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="ex: 20000"
                     value={dAmount}
-                    onChange={(e) => setDAmount(e.target.value)}
-                    className="w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white"
+                    onChange={(e) => {
+                      setDAmount(e.target.value)
+                      if (dTouched.dAmount) validateDebtField('dAmount', e.target.value)
+                    }}
+                    onBlur={() => {
+                      setDTouched((prev) => ({ ...prev, dAmount: true }))
+                      validateDebtField('dAmount', dAmount)
+                    }}
+                    className={`w-full py-2 px-3 text-xs rounded-xl dark:bg-gray-900 bg-gray-50 border transition dark:text-white ${
+                      dFieldErrors.dAmount
+                        ? 'border-rose-500 focus:ring-1 focus:ring-rose-500/30'
+                        : 'dark:border-white/10 border-gray-200 focus:border-emerald-500'
+                    }`}
                   />
+                  {dFieldErrors.dAmount && (
+                    <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" /> {dFieldErrors.dAmount}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium dark:text-gray-300 text-gray-700 mb-1">
