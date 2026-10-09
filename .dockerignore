@@ -1,0 +1,25 @@
+node_modules
+dist
+dist-ssr
+.git
+.github
+.env
+.env*.local
+
+# BMAD & Artifacts
+_bmad
+_bmad/
+_bmad-output
+_bmad-output/
+.bmad
+.agent
+.agents
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors
+.vscode
+.idea
+.DS_Store
